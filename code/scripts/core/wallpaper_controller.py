@@ -63,7 +63,7 @@ class WallpaperController:
         logging.info("Launched refresh.exe")
 
     def run_optional_tools(self):
-        self._run_auto_pause()
+        # self._run_auto_pause()
         self._run_refresh()
 
     # ---------------------------------------------------------

@@ -42,10 +42,11 @@ from core.download_manager import DownloaderThread,DirectDownloadThread,ImageDow
 from core.scheduler import WallpaperScheduler
 from  core.language_controller import LanguageController
 # Import utilities
-from utils.path_utils import COLLECTION_DIR, VIDEOS_DIR, IMAGES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
+from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
 from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, fetch_shuffled_wallpaper, resource_path
-from utils.validators import validate_url_or_path, get_media_type
-from utils.file_utils import copy_to_collection, cleanup_temp_marker
+from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
+from utils.file_utils import cleanup_temp_marker
+from utils.pathResolver import fast_resolve_tapeciarnia_redirect
 
 # Import models
 from models.config import Config
@@ -63,7 +64,7 @@ class TapeciarniaApp(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.x , self.y = get_primary_screen_dimensions()
-
+        self.is_dowloading = False
         # Initialize controllers
         logging.debug("Initializing controllers")
         self.controller = WallpaperController()
@@ -75,8 +76,8 @@ class TapeciarniaApp(QMainWindow):
         self._set_lang()
         # connect to the language controller signals
         self.language_controller.language_changed.connect(self._update_lang)
-        # add event handler to uplaod area
         self.ui.uploadArea.mousePressEvent = self.upload_area_mousePressEvent
+
         # remove focuse from email input textEdit
         self.ui.emailInput.clearFocus()
         self.ui.card.setFocus()
@@ -103,13 +104,34 @@ class TapeciarniaApp(QMainWindow):
         self._setup_tray()
         self._load_settings()
         
-        # Setup enhanced features
-        # self._setup_enhanced_features()
-        
-        # Ensure status bar is always visible
-        # self._ensure_status_visible()
-        
+
         logging.info("TapeciarniaApp initialization completed successfully")
+
+
+    def upload_area_mousePressEvent(self, event):
+            """
+            This is the overridden method that captures the click event.
+            """
+            # Call the base class implementation first (important)
+            super().mousePressEvent(event)
+            logging.debug("Lanuching file browser...")
+            
+            # Check if the left mouse button was pressed
+            if event.button() == Qt.MouseButton.LeftButton:
+
+                path, _ = QFileDialog.getOpenFileName(
+                    self, "Select video or image", str(Path.home()),
+                    "Media (*.mp4 *.mkv *.webm *.avi *.mov *.jpg *.jpeg *.png)"
+                )
+                
+                if path:
+                    logging.info(f"File selected via browse: {path}")
+                    
+                    # Show the same interface as drag & drop
+                    self._handle_browsed_file(path)
+                else:
+                    logging.debug("Browse dialog cancelled")
+
 
     def _update_lang(self, lang:dict):
         """Update UI language based on selected language"""
@@ -151,192 +173,17 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, "bottomFrame"):
             self.ui.bottomFrame.setVisible(True)
 
-    # def _setup_enhanced_features(self):
-    #     """Setup the enhanced wallpaper features"""
-    #     logging.debug("Setting up enhanced features")
-    #     # Connect shuffle buttons for mutual exclusivity
-    #     if hasattr(self.ui, 'randomButton') and hasattr(self.ui, 'randomAnimButton'):
-    #         self.ui.randomButton.toggled.connect(self.on_shuffle_wallpaper_toggled)
-    #         self.ui.randomAnimButton.toggled.connect(self.on_shuffle_animation_toggled)
-    #         logging.debug("Shuffle buttons connected for mutual exclusivity")
-        
-    #     # Connect auto-change checkbox to show/hide interval controls
-    #     if hasattr(self.ui, 'enabledCheck'):
-    #         self.ui.enabledCheck.toggled.connect(self.toggle_interval_controls)
-    #         # Set initial state
-    #         self.toggle_interval_controls(self.ui.enabledCheck.isChecked())
-    #         logging.debug("Auto-change checkbox connected")
-    #     logging.debug("Enhanced features setup completed")
-
-    def on_shuffle_wallpaper_toggled(self, checked):
-        """Handle shuffle wallpaper toggle - only non-animated wallpapers"""
-        if checked:
-            logging.info("Shuffle Wallpaper activated")
-            if hasattr(self.ui, 'randomAnimButton'):
-                self.ui.randomAnimButton.setChecked(False)
-            self.current_shuffle_mode = 'wallpaper'
-            logging.info("Shuffle Wallpaper activated - non-animated only")
-            
-            # Apply first shuffle immediately
-            self._apply_shuffled_wallpaper('wallpaper')
-
-    def on_shuffle_animation_toggled(self, checked):
-        """Handle shuffle animation toggle - only animated wallpapers"""
-        if checked:
-            logging.info("Shuffle Animation activated")
-            if hasattr(self.ui, 'randomButton'):
-                self.ui.randomButton.setChecked(False)
-            self.current_shuffle_mode = 'animation'
-            logging.info("Shuffle Animation activated - animated only")
-            
-            # Apply first shuffle immediately
-            self._apply_shuffled_wallpaper('animation')
-
-    def toggle_interval_controls(self, enabled):
-        """Show/hide interval and range controls based on auto-change setting"""
-        logging.debug(f"Toggling interval controls visibility: {enabled}")
-        interval_controls = [
-            'interval_spinBox', 'interval_label', 'interval_value_label',
-            'range_label', 'range_combo', 'range_frame'
-        ]
-        
-        visible_count = 0
-        for control_name in interval_controls:
-            if hasattr(self.ui, control_name):
-                control = getattr(self.ui, control_name)
-                control.setVisible(enabled)
-                if enabled:
-                    visible_count += 1
-        
-        # Show/hide start button based on scheduler enabled state
-        if hasattr(self.ui, 'startButton'):
-            self.ui.startButton.setVisible(enabled)
-            logging.debug(f"Start button visibility set to: {enabled}")
-        
-        logging.debug(f"Set {visible_count} interval controls to visible: {enabled}")
-
-    def _apply_shuffled_wallpaper(self, shuffle_mode):
-        """Apply a shuffled wallpaper based on the current mode"""
-        logging.info(f"Applying shuffled wallpaper in mode: {shuffle_mode}")
-        available_wallpapers = self.get_shuffled_wallpapers(shuffle_mode)
-        logging.debug(f"Found {len(available_wallpapers)} wallpapers for shuffling")
-        
-        if available_wallpapers:
-            next_wallpaper = self.ensure_wallpaper_change(available_wallpapers)
-            if next_wallpaper:
-                self.change_wallpaper_with_optimization(next_wallpaper)
-                logging.info(f"Shuffled wallpaper applied: {os.path.basename(next_wallpaper)}")
-            else:
-                logging.warning("No suitable wallpaper found for shuffling")
-        else:
-            logging.warning("No wallpapers available for shuffling")
-
-    def get_shuffled_wallpapers(self, shuffle_mode):
-        """Get appropriate wallpapers based on shuffle mode - from ALL sources"""
-        logging.debug(f"Getting shuffled wallpapers for mode: {shuffle_mode} from ALL sources")
-        
-        if shuffle_mode == 'wallpaper':
-            filter_func = self.get_non_animated_filter()
-            filter_type = "non-animated (images)"
-        elif shuffle_mode == 'animation':
-            filter_func = self.get_animated_filter()
-            filter_type = "animated (videos)"
-        else:
-            filter_func = lambda x: True  # No filter
-            filter_type = "all"
-        
-        # Get files from ALL sources (Collection + Favorites)
-        all_wallpapers = self._get_media_files("all")
-        filtered_wallpapers = [str(wp) for wp in all_wallpapers if filter_func(str(wp))]
-        
-        logging.debug(f"Filtered {len(filtered_wallpapers)} {filter_type} wallpapers from {len(all_wallpapers)} total across ALL sources")
-        random.shuffle(filtered_wallpapers)
-        return filtered_wallpapers
-
-    def get_non_animated_filter(self):
-        """Filter for non-animated wallpapers (images)"""
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
-        return lambda file_path: any(str(file_path).lower().endswith(ext) for ext in image_extensions)
-
-    def get_animated_filter(self):
-        """Filter for animated wallpapers (videos)"""
-        video_extensions = {'.mp4', '.webm', '.avi', '.mov', '.mkv'}
-        return lambda file_path: any(str(file_path).lower().endswith(ext) for ext in video_extensions)
-
-    def ensure_wallpaper_change(self, available_wallpapers):
-        """Ensure wallpaper actually changes, don't select the same one"""
-        logging.debug(f"Ensuring wallpaper change from {len(available_wallpapers)} options")
-        if len(available_wallpapers) <= 1:
-            logging.debug("Only one wallpaper available, no choice needed")
-            return available_wallpapers[0] if available_wallpapers else None
-            
-        # Filter out current wallpaper
-        other_wallpapers = [wp for wp in available_wallpapers if wp != self.last_wallpaper_path]
-        logging.debug(f"Filtered out current wallpaper, {len(other_wallpapers)} options remain")
-        
-        if not other_wallpapers:
-            # If all wallpapers are the same as current, still change to force update
-            logging.debug("All wallpapers are the same as current, forcing change")
-            return available_wallpapers[0]
-            
-        selected = random.choice(other_wallpapers)
-        logging.debug(f"Selected new wallpaper: {os.path.basename(selected)}")
-        return selected
-
-    def change_wallpaper_with_optimization(self, new_wallpaper_path):
-        """Optimized wallpaper change with minimal process management"""
-        logging.info(f"Changing wallpaper with optimization: {os.path.basename(new_wallpaper_path)}")
-        new_wallpaper_type = self.get_wallpaper_type(new_wallpaper_path)
-        logging.debug(f"New wallpaper type: {new_wallpaper_type}")
-        
-        # Determine if process stop is needed
-        needs_process_stop = self.needs_process_stop(self.current_wallpaper_type, new_wallpaper_type)
-        logging.debug(f"Process stop needed: {needs_process_stop} (current: {self.current_wallpaper_type}, new: {new_wallpaper_type})")
-        
-        if needs_process_stop:
-            logging.debug("Stopping current wallpaper processes")
-            self.controller.stop()
-        
-        # Set new wallpaper using existing method
-        self._apply_wallpaper_from_path(Path(new_wallpaper_path))
-        self.current_wallpaper_type = new_wallpaper_type
-        self.last_wallpaper_path = new_wallpaper_path
-        
-
-    def needs_process_stop(self, current_type, new_type):
-        """
-        Determine if we need to stop processes during wallpaper change
-        Stop only when: image->video, video->image, or video->video
-        Don't stop for: image->image
-        """
-        if current_type is None:
-            logging.debug("First wallpaper, no process stop needed")
-            return False  # First wallpaper, no need to stop
-            
-        if current_type == 'image' and new_type == 'image':
-            logging.debug("Image to image transition, no process stop needed")
-            return False  # Image to image transition - no stop needed
-            
-        logging.debug(f"Process stop needed for transition: {current_type} -> {new_type}")
-        return True  # All other transitions need process stop
-
-    def get_wallpaper_type(self, file_path):
-        """Determine if wallpaper is image or video"""
-        video_extensions = {'.mp4', '.webm', '.avi', '.mov', '.mkv'}
-        file_ext = os.path.splitext(file_path)[1].lower()
-        wallpaper_type = 'video' if file_ext in video_extensions else 'image'
-        logging.debug(f"File {os.path.basename(file_path)} identified as: {wallpaper_type}")
-        return wallpaper_type
-
-
     def on_shuffle_animated(self):
+
         """Shuffle through animated wallpapers - try online first, fallback to local"""
         logging.info("Shuffle animated triggered - trying online first")
         self.current_shuffle_type = 'animated'
+        self._update_shuffle_button_states('animated')
+        # disable another button 
+        self.ui.randomButton.setDisabled(True)
         self._set_status("Fetching online animated wallpaper...")
         
         # Update button states
-        self._update_shuffle_button_states('animated')
         
         # Check internet connection first
         if not is_connected_to_internet():
@@ -360,14 +207,19 @@ class TapeciarniaApp(QMainWindow):
             logging.error(f"Online shuffle animated failed: {e}")
             self._fallback_to_local_shuffle(True)
 
+
+
     def on_shuffle_wallpaper(self):
+
+        self.is_dowloading = True
         """Shuffle through static wallpapers - try online first, fallback to local"""
         logging.info("Shuffle wallpaper triggered - trying online first")
         self.current_shuffle_type = 'wallpaper'
+        self._update_shuffle_button_states('wallpaper')
+        self.ui.randomAnimButton.setDisabled(True)
         self._set_status("Fetching online wallpaper...")
         
         # Update button states
-        self._update_shuffle_button_states('wallpaper')
         
         # Check internet connection first
         if not is_connected_to_internet():
@@ -392,12 +244,13 @@ class TapeciarniaApp(QMainWindow):
             logging.error(f"Online shuffle wallpaper failed: {e}")
             self._fallback_to_local_shuffle(False)
 
+
     def _perform_reset(self):
         """Reset to default wallpaper WITHOUT confirmation but WITH success message"""
         logging.info("Performing reset without confirmation")
         self.controller.stop()
         self.scheduler.stop()
-        
+        self.set_buttons(True)
         # Reset enhanced state
         self.current_wallpaper_type = None
         self.last_wallpaper_path = None
@@ -784,7 +637,6 @@ class TapeciarniaApp(QMainWindow):
             self.ui.browseButton.clicked.connect(self.on_browse_clicked)
             logging.debug("Browse button connected")
 
-        # Shuffle buttons - only one can be active at a time
         if hasattr(self.ui, "randomAnimButton"):
             self.ui.randomAnimButton.clicked.connect(self.on_shuffle_animated)
             logging.debug("Shuffle animated button connected")
@@ -796,8 +648,8 @@ class TapeciarniaApp(QMainWindow):
         # Source buttons - with double-click support
         if hasattr(self.ui, "super_wallpaper_btn"):
             self.ui.super_wallpaper_btn.clicked.connect(self.on_super_wallpaper)
-            self.ui.super_wallpaper_btn.mouseDoubleClickEvent = lambda e: self.on_source_double_clicked("super")
-            logging.debug("Super wallpaper button connected")
+            # self.ui.super_wallpaper_btn.mouseDoubleClickEvent = lambda e: self.on_source_double_clicked("super")
+            # logging.debug("Super wallpaper button connected")
         
         if hasattr(self.ui, "fvrt_wallpapers_btn"):
             self.ui.fvrt_wallpapers_btn.clicked.connect(self.on_favorite_wallpapers)
@@ -885,6 +737,7 @@ class TapeciarniaApp(QMainWindow):
 
     # Main application methods
     def on_apply_clicked(self):
+        self.ui.loadUrlButton.setDisabled(True)
         """Handle apply/load button click"""
         logging.info("Apply/Load button clicked")
         if not hasattr(self.ui, "urlInput"):
@@ -900,6 +753,7 @@ class TapeciarniaApp(QMainWindow):
         
         logging.info(f"Applying input string: {url}")
         self._apply_input_string(url)
+
     def on_start_clicked(self):
         """Start the scheduler with selected settings and random wallpaper"""
         logging.info("Start button clicked - starting scheduler with current settings")
@@ -1001,44 +855,21 @@ class TapeciarniaApp(QMainWindow):
         }
         return source_names.get(source, "Custom Source")
 
-    def _get_range_display_name(self):
-        """Get display name for current range"""
-        range_names = {
-            "all": "All Types",
-            "wallpaper": "Images Only", 
-            "mp4": "Videos Only"
-        }
-        return range_names.get(self.current_range, "All Types")
+    # def _get_range_display_name(self):
+    #     """Get display name for current range"""
+    #     range_names = {
+    #         "all": "All Types",
+    #         "wallpaper": "Images Only", 
+    #         "mp4": "Videos Only"
+    #     }
+    #     return range_names.get(self.current_range, "All Types")
     
-    def upload_area_mousePressEvent(self, event):
-        """
-        This is the overridden method that captures the click event.
-        """
-        # Call the base class implementation first (important)
-        super().mousePressEvent(event)
-        logging.debug("Lanuching file browser...")
-        
-        # Check if the left mouse button was pressed
-        if event.button() == Qt.MouseButton.LeftButton:
-
-            path, _ = QFileDialog.getOpenFileName(
-                self, "Select video or image", str(Path.home()),
-                "Media (*.mp4 *.mkv *.webm *.avi *.mov *.jpg *.jpeg *.png)"
-            )
-            
-            if path:
-                logging.info(f"File selected via browse: {path}")
-                
-                # Show the same interface as drag & drop
-                self._handle_browsed_file(path)
-            else:
-                logging.debug("Browse dialog cancelled")
 
     def on_browse_clicked(self):
         """Browse web for wallpapers"""
         logging.info("Browse button clicked")
         webbrowser.open_new_tab("https://www.tapeciarnia.pl/")
-        logging.debug("opening tapeciarnia")
+        logging.debug("Opening tapeciarnia")
 
     def _handle_browsed_file(self, file_path: str):
         """Handle browsed file with destination selection"""
@@ -1069,9 +900,7 @@ class TapeciarniaApp(QMainWindow):
             self.drag_drop_widget.uploadIcon.hide()
             
             # Show collection/favorites buttons, hide set as wallpaper initially
-            self.drag_drop_widget.add_to_collection_btn.show()
-            self.drag_drop_widget.add_to_favorites_btn.show()
-            self.drag_drop_widget.upload_btn.hide()  # Hidden until user selects destination
+            self.drag_drop_widget.upload_btn.show()  # 
             self.drag_drop_widget.reset_btn.show()   # Always show reset when file is selected
             
             logging.info(f"Browsed file ready for destination selection: {filename}")
@@ -1079,12 +908,14 @@ class TapeciarniaApp(QMainWindow):
 
     def _update_shuffle_button_states(self, active_type):
         """Update shuffle button states - only one can be active"""
-        logging.debug(f"Updating shuffle button states: {active_type}")
+        logging.info(f"Updating shuffle button states: {active_type}")
         if hasattr(self.ui, "randomAnimButton"):
             if active_type == 'animated':
+                self.ui.randomAnimButton.setDisabled(True)
                 self.ui.randomAnimButton.setProperty("class", "primary")
                 self.ui.randomAnimButton.setIcon(self._make_icon(self.ui.randomAnimButton.property("icon_name"),className="primary"))
             else:
+                self.ui.randomAnimButton.setDisabled(False)
                 self.ui.randomAnimButton.setProperty("class", "ghost")
                 self.ui.randomAnimButton.setIcon(self._make_icon(self.ui.randomAnimButton.property("icon_name"),className="ghost"))
             self.ui.randomAnimButton.style().unpolish(self.ui.randomAnimButton)
@@ -1092,9 +923,11 @@ class TapeciarniaApp(QMainWindow):
         
         if hasattr(self.ui, "randomButton"):
             if active_type == 'wallpaper':
+                self.ui.randomButton.setDisabled(True)
                 self.ui.randomButton.setProperty("class", "primary")
                 self.ui.randomButton.setIcon(self._make_icon(self.ui.randomButton.property("icon_name"),className="primary"))
             else:
+                self.ui.randomButton.setDisabled(False)
                 self.ui.randomButton.setProperty("class", "ghost")
                 self.ui.randomButton.setIcon(self._make_icon(self.ui.randomButton.property("icon_name"),className="ghost"))
             self.ui.randomButton.style().unpolish(self.ui.randomButton)
@@ -1103,18 +936,20 @@ class TapeciarniaApp(QMainWindow):
         if active_type == None:
                 
             if hasattr(self.ui, "randomAnimButton"):
+                self.ui.randomAnimButton.setDisabled(False)
                 self.ui.randomAnimButton.setProperty("class", "ghost")
                 self.ui.randomAnimButton.setIcon(self._make_icon(self.ui.randomAnimButton.property("icon_name"),className="ghost"))
                 self.ui.randomAnimButton.style().unpolish(self.ui.randomAnimButton)
                 self.ui.randomAnimButton.style().polish(self.ui.randomAnimButton)
 
             if hasattr(self.ui, "randomButton"):
+                self.ui.randomButton.setDisabled(False)
                 self.ui.randomButton.setProperty("class", "ghost")
                 self.ui.randomButton.setIcon(self._make_icon(self.ui.randomButton.property("icon_name"),className="ghost"))
                 self.ui.randomButton.style().unpolish(self.ui.randomButton)
                 self.ui.randomButton.style().polish(self.ui.randomButton)
 
-
+        self.update()
         logging.debug(f"Shuffle button states updated for: {active_type}")
 
     # Source selection
@@ -1126,46 +961,32 @@ class TapeciarniaApp(QMainWindow):
                             "Super Wallpaper feature - Premium curated wallpapers coming soon!")
 
     def on_favorite_wallpapers(self):
-        """Favorite wallpapers source - ONLY uses FAVS_DIR"""
-        logging.info("Favorite wallpapers source selected")
-        
-        # Check if favorites folder has any files
-        if not FAVS_DIR.exists() or not any(FAVS_DIR.iterdir()):
-            logging.warning("No favorite wallpapers found")
-            QMessageBox.information(
-                self, 
-                "No Favorites", 
-                "No favorite wallpapers found.\n\nAdd some wallpapers to favorites first by:\n"
-                "1. Loading a wallpaper from URL or file\n"
-                "2. Using the 'Add to Favorites' feature",
-                QMessageBox.StandardButton.Ok
-            )
-            return
-        
-        # Set scheduler to use ONLY FAVS_DIR
-        self.scheduler.source = str(FAVS_DIR)
-        self._set_status("Favorite wallpapers source selected")
-        self._update_source_buttons_active("favorites")
-        logging.info("Scheduler set to use FAVS_DIR only")
+        QMessageBox.information(
+            self,
+            "Favorites — Coming Soon",
+            "The Favorites feature is currently under development.\n\n"
+            "You will be able to save and manage your favorite wallpapers in a future update. "
+            "Thank you for your patience and for using Tapeciarnia.",
+            QMessageBox.StandardButton.Ok
+        )
 
     def on_added_wallpapers(self):
         """My Collection source - includes ALL folders"""
         logging.info("My Collection source selected")
         self._set_status("My Collection source selected")
         
-        has_videos = VIDEOS_DIR.exists() and any(VIDEOS_DIR.iterdir())
-        has_images = IMAGES_DIR.exists() and any(IMAGES_DIR.iterdir())
-        has_favorites = FAVS_DIR.exists() and any(FAVS_DIR.iterdir())
+        # has_favorites = FAVS_DIR.exists() and any(FAVS_DIR.iterdir())
+        has_saves = SAVES_DIR.exists() and any(SAVES_DIR.iterdir())
         
-        if not (has_videos or has_images or has_favorites):
+        if not (has_saves):
             logging.warning("Empty collection - no wallpapers found")
             QMessageBox.information(self, "Empty Collection", 
                                 "No wallpapers found in your collection. Download or add some wallpapers first.")
             return
         
         # Set scheduler to use ALL collection folders
-        self.scheduler.source = str(COLLECTION_DIR)
-        self._set_status("Scheduler set to use entire collection (Videos + Images + Favorites)")
+        self.scheduler.source = str(SAVES_DIR)
+        self._set_status("Scheduler set to use entire collection")
         self._update_source_buttons_active("added")
         logging.info("Scheduler set to use entire collection")
 
@@ -1255,67 +1076,91 @@ class TapeciarniaApp(QMainWindow):
         self.ui.range_mp4_bnt.setText(f"  {self.lang['settings']['rangeMp4Button']}")
         self.ui.startButton.setText(f"  {self.lang['settings']['startButton']}")
         self.ui.resetButton.setText(f"  {self.lang['settings']['resetButton']}")
-            
 
-    # Core wallpaper application logic
+    def set_buttons(self,enabled: bool):
+        self.ui.randomButton.setDisabled(not enabled)
+        self.ui.randomAnimButton.setDisabled(not enabled)
+        self.ui.loadUrlButton.setDisabled(not enabled)
+
+
+
     def _apply_input_string(self, text: str):
-        """Main method to apply wallpaper from various inputs"""
-        logging.info(f"Applying input string: {text}")
-        text = (text or "").strip()
-        if not text:
-            logging.warning("Empty input string provided")
-            QMessageBox.warning(self, "Warning", "Please enter a valid URL or file path.")
+        """Main method to apply wallpaper from URL or file path."""
+
+        if not is_connected_to_internet:
+            self._set_status("Unable to connect to the server.Please check your connection")
             return
+        # Disable buttons during processing
+        self.set_buttons(False)
+
+        text = (text or "").strip()
+        logging.info(f"Applying input: {text}")
+
+        if not text:
+            QMessageBox.warning(self, "Warning", "Please enter a valid URL or file path.")
+            self.set_buttons(True)
+            return
+        
+
 
         validated = validate_url_or_path(text)
         if not validated:
             logging.warning(f"Input not recognized: {text}")
             QMessageBox.warning(self, "Error", f"Input not recognized: {text}")
-            return
+            self.set_buttons(True)
 
-        # Handle local files
+        if is_tapeciarnia_redirect_url(validated):
+            logging.info(f"Tapeciarnia redirect url found: {validated}")
+            validated = fast_resolve_tapeciarnia_redirect(validated)
+            if not validated:
+                QMessageBox.warning(self, "Unsupported URL",
+                    "The URL doesn't appear to be a supported image or video.")
+                return            
+
         p = Path(validated)
         if p.exists():
             logging.info(f"Handling local file: {p}")
             self._handle_local_file(p)
             return
 
-        # Handle remote URLs - USING get_media_files
-        if validated.lower().startswith("http"):
-            logging.info(f"Handling remote URL: {validated}")
-            
+        # -------- Handle Remote URL --------
+        if validate_tapeciarnia_url(validated):
+            logging.info(f"Processing remote URL: {validated}")
+
             media_type = get_media_type(validated)
             logging.debug(f"Detected media type: {media_type}")
-            
+
             if media_type == "image":
-                logging.info(f"Handling as image URL: {validated}")
                 self._handle_remote_image(validated)
             elif media_type == "video":
-                logging.info(f"Handling as video URL: {validated}")
                 self._handle_remote_video(validated)
             else:
-                logging.warning(f"Unsupported URL type: {validated}")
-                QMessageBox.warning(self, "Unsupported URL", 
-                                "The URL doesn't appear to be a supported image or video.")
+                QMessageBox.warning(self, "Unsupported URL",
+                                    "The URL doesn't appear to be a supported image or video.")
+            self.set_buttons(True)
             return
+    
+        else:
 
-        logging.warning(f"Unsupported input type: {text}")
-        QMessageBox.warning(self, "Invalid Input", "Unsupported input type.")
+            # -------- Fallback --------
+            logging.warning(f"Unsupported input type: {text}")
+            QMessageBox.warning(self, "Unsupported URL", "The URL doesn't appear to be a supported image or video.")
+            self.set_buttons(True)
+
 
     def _handle_local_file(self, file_path: Path):
         """Handle local file application"""
         logging.info(f"Processing local file: {file_path}")
         if file_path.suffix.lower() in (".mp4", ".mkv", ".webm", ".avi", ".mov"):
             logging.debug("Local file is video, copying to videos directory")
-            dest = copy_to_collection(file_path, VIDEOS_DIR)
-            self._apply_video(str(dest))
+            self._apply_video(str(file_path))
         elif file_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp", ".gif"):
             logging.debug("Local file is image, copying to images directory")
-            dest = copy_to_collection(file_path, IMAGES_DIR)
-            self._apply_image_with_fade(str(dest))
+            self._apply_image(str(file_path))
         else:
             logging.warning(f"Unsupported local file type: {file_path.suffix}")
             QMessageBox.warning(self, "Unsupported", "Unsupported local file type.")
+
 
     def _handle_remote_image(self, url: str):
         """Handle remote image download and application with progress window"""
@@ -1323,15 +1168,11 @@ class TapeciarniaApp(QMainWindow):
         
         try:
             # Create progress dialog for image download
-            self.progress_dialog = DownloadProgressDialog(self)
-            self.progress_dialog.show()
-            self.progress_dialog.update_progress(0, "Starting image download...")
             
             # Start download in a thread to show progress
             self.image_download_thread = ImageDownloadThread(url)
             self.image_download_thread.progress.connect(
                 lambda percent, status: (
-                    self.progress_dialog.update_progress(percent, status),
                     self._set_status(status)
                 )
             )
@@ -1343,66 +1184,30 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Image download setup failed: {e}", exc_info=True)
-            if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-                self.progress_dialog.close()
             QMessageBox.critical(self, "Error", f"Image download setup failed: {e}")
 
     def _on_image_download_done(self, file_path: str):
         """Handle completion of image download"""
         logging.info(f"Image download completed: {file_path}")
-        
-        # Close progress dialog
-        if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
-        
-        # Validate the downloaded image file
-        if not self._validate_downloaded_file(file_path):
-            logging.error(f"Image download validation failed for: {file_path}")
-            self._set_status("Image download failed - file validation error")
-            return
-        
-        # Ask user where to add the image file (same as video download)
-        self._ask_download_destination(Path(file_path))
+        self._safe_process_file(Path(file_path))
 
     def _handle_remote_video(self, url: str):
-        """Handle remote video download - FIXED for direct video links"""
+        """Handle remote video download - for direct video links"""
         logging.info(f"Downloading remote video: {url}")
         self._set_status("Downloading video...")
         cleanup_temp_marker()
+        self._handle_direct_video_download(url)
 
-        # Check if it's a direct video link (ends with common video extensions)
-        direct_video_extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
-        is_direct_link = any(url.lower().endswith(ext) for ext in direct_video_extensions)
-        
-        if is_direct_link:
-            logging.info(f"Detected direct video link: {url}")
-            self._handle_direct_video_download(url)
-        else:
-            logging.info(f"Using yt-dlp for video URL: {url}")
-            self._handle_ytdlp_video_download(url)
 
     def _handle_direct_video_download(self, url: str):
         """Handle direct video file downloads (not YouTube/streaming)"""
         try:
-            import requests
-            from urllib.parse import urlparse
-            
             logging.info(f"Starting direct video download: {url}")
             
-            # Create progress dialog
-            self.progress_dialog = DownloadProgressDialog(self)
-            self.progress_dialog.show()
-            self.progress_dialog.update_progress(0, "Starting direct download...")
-            
-            # Get filename from URL
-            parsed_url = urlparse(url)
-            filename = os.path.basename(parsed_url.path)
-            if not filename or '.' not in filename:
-                filename = f"video_{int(time.time())}.mp4"
-            
             # Sanitize filename
+            filename = url.split("/")[-1]
             filename = self._get_safe_filename(filename)
-            download_path = VIDEOS_DIR / filename
+            download_path = SAVES_DIR / filename
             
             logging.info(f"Downloading to: {download_path}")
             
@@ -1410,67 +1215,25 @@ class TapeciarniaApp(QMainWindow):
             self.direct_download_thread = DirectDownloadThread(url, str(download_path))
             self.direct_download_thread.progress.connect(
                 lambda percent, status: (
-                    self.progress_dialog.update_progress(percent, status),
                     self._set_status(status)
                 )
             )
             self.direct_download_thread.error.connect(self._on_download_error)
-            self.direct_download_thread.done.connect(self._on_direct_download_done)
+            self.direct_download_thread.done.connect(self._on_direct_video_download_done)
             
             self.direct_download_thread.start()
             logging.info("Direct download thread started")
             
         except Exception as e:
             logging.error(f"Direct download setup failed: {e}", exc_info=True)
-            if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-                self.progress_dialog.close()
             QMessageBox.critical(self, "Error", f"Download setup failed: {e}")
 
-    def _handle_ytdlp_video_download(self, url: str):
-        """Handle YouTube/streaming video downloads using yt-dlp"""
-        try:
-            self.progress_dialog = DownloadProgressDialog(self)
-            self.downloader = DownloaderThread(url)
-
-            self.downloader.progress.connect(
-                lambda percent, status: (
-                    self.progress_dialog.update_progress(percent, status),
-                    self._set_status(status)
-                )
-            )
-            self.downloader.error.connect(self._on_download_error)
-            self.downloader.done.connect(self._on_download_done)
-
-            self.downloader.start()
-            self.progress_dialog.show()
-            logging.info("YouTube downloader thread started")
-
-        except Exception as e:
-            logging.error(f"YouTube download setup failed: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Download setup failed: {e}")
-
-    def _on_direct_download_done(self, file_path: str):
+    def _on_direct_video_download_done(self, file_path: str):
         """Handle completion of direct video download - FIXED to not set wallpaper on failure"""
         logging.info(f"Direct download completed: {file_path}")
-        if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
-        
-        # Check if download actually succeeded
-        if not file_path or not os.path.exists(file_path):
-            logging.error("Direct download failed - file not found")
-            self._set_status("Direct download failed - file not found")
-            # Don't set any wallpaper
-            return
-        
-        file_size = os.path.getsize(file_path)
-        if file_size == 0:
-            logging.error("Direct download failed - file is empty")
-            self._set_status("Direct download failed - empty file")
-            # Don't set any wallpaper
-            return
-            
-        logging.info(f"Direct download successful: {file_path}")
-        self._ask_download_destination(downloaded_file=Path(file_path))
+        self._safe_process_file(Path(file_path))
+
+
 
     def _get_safe_filename(self, filename):
         """Remove invalid characters for both Windows and Linux"""
@@ -1483,27 +1246,6 @@ class TapeciarniaApp(QMainWindow):
         logging.debug(f"Sanitized filename: {filename}")
         return filename
 
-    def _on_download_done(self, path: str):
-        """Handle download completion with robust validation"""
-        logging.info(f"Download completion handler called with path: {path}")
-        
-        # Close progress dialog first
-        if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
-            logging.debug("Progress dialog closed")
-        
-        # Validate the downloaded file thoroughly
-        if not self._validate_downloaded_file(path):
-            logging.error(f"Download validation failed for: {path}")
-            self._set_status("Download failed - file validation error")
-            return
-        
-        # Only proceed if file is valid
-        p = Path(path)
-        logging.info(f"Download validated successfully: {p.name} ({p.stat().st_size} bytes)")
-        
-        # Ask user where to add the file
-        self._ask_download_destination(p)
 
     def _validate_downloaded_file(self, path: str) -> bool:
         """Thoroughly validate the downloaded file"""
@@ -1544,76 +1286,12 @@ class TapeciarniaApp(QMainWindow):
             logging.error(f"File validation error: {e}")
             return False
 
-    def _ask_download_destination(self, downloaded_file: Path):
-        """Ask user where to add downloaded file with error handling"""
-        logging.info("Asking user for download destination")
-        
-        # Double-check file still exists before showing dialog
-        if not downloaded_file.exists():
-            logging.error("Downloaded file disappeared before destination selection")
-            QMessageBox.critical(
-                self,
-                "File Error",
-                "The downloaded file is no longer available. Please try downloading again.",
-                QMessageBox.StandardButton.Ok
-            )
-            return
-        
-        try:
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Add Downloaded File")
-            dialog.setModal(True)
-            dialog.setFixedSize(400, 200)
-            
-            layout = QVBoxLayout(dialog)
-            
-            # Message with file info
-            file_size = downloaded_file.stat().st_size
-            message = QLabel(
-                f"Where would you like to add the downloaded file?\n\n"
-                f"{downloaded_file.name}\n"
-                f"Size: {file_size / 1024 / 1024:.1f} MB"
-            )
-            message.setAlignment(Qt.AlignCenter)
-            layout.addWidget(message)
-            
-            # Buttons
-            buttons_layout = QHBoxLayout()
-            
-            add_to_collection_btn = QPushButton("Add to Collection")
-            add_to_favorites_btn = QPushButton("Add to Favorites")
-            cancel_btn = QPushButton("Cancel")
-            
-            add_to_collection_btn.clicked.connect(
-                lambda: self._safe_process_destination(downloaded_file, "collection", dialog)
-            )
-            add_to_favorites_btn.clicked.connect(
-                lambda: self._safe_process_destination(downloaded_file, "favorites", dialog)
-            )
-            cancel_btn.clicked.connect(dialog.reject)
-            
-            buttons_layout.addWidget(add_to_collection_btn)
-            buttons_layout.addWidget(add_to_favorites_btn)
-            buttons_layout.addWidget(cancel_btn)
-            
-            layout.addLayout(buttons_layout)
-            
-            dialog.exec()
-            
-        except Exception as e:
-            logging.error(f"Error showing destination dialog: {e}")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to show destination options: {str(e)}",
-                QMessageBox.StandardButton.Ok
-            )
 
-    def _safe_process_destination(self, downloaded_file: Path, destination: str, dialog: QDialog):
+    def _safe_process_file(self, downloaded_file_path: Path,):
         """Safely process destination with comprehensive error handling"""
         try:
             # Final validation before processing
-            if not downloaded_file.exists():
+            if not downloaded_file_path.exists():
                 logging.error("File disappeared during destination selection")
                 QMessageBox.critical(
                     self,
@@ -1621,10 +1299,9 @@ class TapeciarniaApp(QMainWindow):
                     "The file is no longer available. Operation cancelled.",
                     QMessageBox.StandardButton.Ok
                 )
-                dialog.reject()
                 return
             
-            self._process_download_destination(downloaded_file, destination, dialog)
+            self._process_download_file(downloaded_file_path)
             
         except Exception as e:
             logging.error(f"Error processing destination: {e}")
@@ -1634,74 +1311,20 @@ class TapeciarniaApp(QMainWindow):
                 f"Failed to process file: {str(e)}",
                 QMessageBox.StandardButton.Ok
             )
-            dialog.reject()
 
-    def _process_download_destination(self, downloaded_file: Path, destination: str, dialog: QDialog):
-        """Process the downloaded file to specified destination"""
+
+    def _process_download_file(self, downloaded_file_path: Path):
+
         try:
-            # Determine destination folder
-            if destination == "favorites":
-                dest_folder = FAVS_DIR
-                dest_name = "favorites"
-            else:  # collection
-                if downloaded_file.suffix.lower() in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
-                    dest_folder = VIDEOS_DIR
-                else:
-                    dest_folder = IMAGES_DIR
-                dest_name = "collection"
-            
-            # Copy file with duplicate handling
-            dest_path = dest_folder / downloaded_file.name
-            counter = 1
-            original_stem = downloaded_file.stem
-            while dest_path.exists():
-                dest_path = dest_folder / f"{original_stem}_{counter}{downloaded_file.suffix}"
-                counter += 1
-            
-            shutil.copy2(downloaded_file, dest_path)
-            
-            # Close the destination dialog
-            dialog.accept()
-            
-            # Ask if user wants to set as wallpaper
-            self._ask_set_as_wallpaper(dest_path, dest_name)
-            
-            logging.info(f"Downloaded file added to {dest_name}: {dest_path}")
-            
-        except Exception as e:
-            logging.error(f"Failed to process download destination: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
-            dialog.reject()
 
-    def _ask_set_as_wallpaper(self, file_path: Path, source: str):
-        """Ask user if they want to set the file as wallpaper"""
-        logging.info(f"Asking to set as wallpaper: {file_path}")
-        
-        reply = QMessageBox.question(
-            self,
-            "Set as Wallpaper?",
-            f"File successfully added to {source}!\n\n"
-            f"Would you like to set '{file_path.name}' as your wallpaper now?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            logging.info(f"User chose to set as wallpaper: {file_path}")
-            self._apply_wallpaper_from_path(file_path)
-            self._set_status(f"Wallpaper set: {file_path.name}")
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Wallpaper set successfully!\n\n{file_path.name}",
-                QMessageBox.StandardButton.Ok
-            )
-        else:
-            logging.info(f"User chose not to set as wallpaper: {file_path}")
-            self._set_status(f"File added to {source}: {file_path.name}")
-            # Still update URL input so user can set it later
-            if hasattr(self.ui, 'urlInput'):
-                self.ui.urlInput.setText(str(file_path))
+            self._apply_wallpaper_from_path(downloaded_file_path)
+
+            logging.info(f"Downloaded file saved to {SAVES_DIR}: {downloaded_file_path}")
+
+        except Exception as e:
+            logging.error(f"Failed to process downloaded file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
+
 
     def _apply_wallpaper_from_path(self, file_path: Path):
         """Apply wallpaper from file path - OPTIMIZED to avoid unnecessary stops"""
@@ -1711,32 +1334,32 @@ class TapeciarniaApp(QMainWindow):
         
         # Only stop if necessary (video to video, video to image, or image to video)
         needs_stop = (current_is_video and new_is_video) or (current_is_video and not new_is_video) or (not current_is_video and new_is_video)
-        # No need to stop here, as the controller methods handle it
-        # if needs_stop:
-        #     logging.debug("Stopping current wallpaper due to type change")
-        #     self.controller.stop()
         
         if new_is_video:
             self._apply_video(str(file_path))
         else:
-            self._apply_image_with_fade(str(file_path))
+            self._apply_image(str(file_path))
 
     def _apply_video(self, video_path: str):
         """Apply video wallpaper"""
         try:
+            self.set_buttons(False)
             logging.info(f"Applying video wallpaper: {video_path}")
             self.controller.start_video(video_path)
             self.config.set_last_video(video_path)
             self._set_status(f"Playing video: {Path(video_path).name}")
             self._update_url_input(video_path)
             logging.info(f"Video wallpaper applied successfully: {Path(video_path).name}")
+            self.set_buttons(True)
         except Exception as e:
+            self.set_buttons(True)
             logging.error(f"Failed to play video: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to play video: {e}")
 
-    def _apply_image_with_fade(self, image_path: str):
+    def _apply_image(self, image_path: str):
         """Apply image wallpaper with fade effect - FIXED for null pixmap"""
         try:
+            self.set_buttons(False)
             logging.info(f"Applying image wallpaper with fade: {image_path}")
             
             # Check if image file exists and is valid
@@ -1750,40 +1373,21 @@ class TapeciarniaApp(QMainWindow):
                 logging.error(f"Failed to load image: {image_path}")
                 raise ValueError(f"Invalid image file: {image_path}")
             
-            # Scale the new pixmap
-            new_pix = new_pix.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            
-            # Try to get old pixmap, but continue if it fails
-            old_pix = None
-            try:
-                old_pix = self.grab()
-                if old_pix.isNull():
-                    logging.debug("Old pixmap is null, using default fade")
-                    old_pix = None
-            except Exception as e:
-                logging.debug(f"Could not grab old pixmap: {e}")
-                old_pix = None
-            
-            # Setup fade overlay
-            self.fade_overlay.set_pixmaps(old_pix, new_pix)
-            self.fade_overlay.show()
-            self.fade_overlay.raise_()
-            self.fade_overlay.animate_to(duration=650)
             
             # Apply wallpaper
             self.controller.start_image(image_path)
             self.config.set_last_video(image_path)
             
-            # Hide overlay after animation
-            QTimer.singleShot(700, self.fade_overlay.hide)
             self._set_status(f"Image applied: {Path(image_path).name}")
             self._update_url_input(image_path)
-            logging.info(f"Image wallpaper applied with fade: {Path(image_path).name}")
+            logging.info(f"Image wallpaper applied: {Path(image_path).name}")
+            self.set_buttons(True)
             
         except Exception as e:
             logging.error(f"Fade apply failed: {e}", exc_info=True)
             # Fallback to direct application without fade
             try:
+                self.set_buttons(True)
                 logging.info("Attempting direct image application without fade")
                 self.controller.start_image(image_path)
                 self.config.set_last_video(image_path)
@@ -1804,20 +1408,15 @@ class TapeciarniaApp(QMainWindow):
             if self.scheduler.source == str(FAVS_DIR):
                 search_folders = [FAVS_DIR]
                 source_type = "favorites"
-            elif self.scheduler.source == str(COLLECTION_DIR):
-                search_folders = [VIDEOS_DIR, IMAGES_DIR, FAVS_DIR]
+            elif self.scheduler.source == str(SAVES_DIR):
+                search_folders = [SAVES_DIR]
                 source_type = "collection"
             else:
                 search_folders = [Path(self.scheduler.source)]
                 source_type = "custom"
         else:
             # Fallback to range-based selection
-            if self.current_range == "mp4":
-                search_folders = [VIDEOS_DIR]
-            elif self.current_range == "wallpaper":
-                search_folders = [IMAGES_DIR]
-            else:  # "all"
-                search_folders = [VIDEOS_DIR, IMAGES_DIR, FAVS_DIR]
+            search_folders = [SAVES_DIR]
             source_type = "range-based"
         
         logging.debug(f"Using source: {source_type}, folders: {[str(f) for f in search_folders]}")
@@ -1826,9 +1425,9 @@ class TapeciarniaApp(QMainWindow):
         if media_type == "mp4":
             extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
         elif media_type == "wallpaper":
-            extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+            extensions = ('.jpg', '.jpeg', '.png', '.gif')
         else:
-            extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.mp4', '.mkv', '.webm', '.avi', '.mov')
+            extensions = ('.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mkv', '.webm', '.avi', '.mov')
         
         for folder in search_folders:
             if folder.exists():
@@ -1858,8 +1457,8 @@ class TapeciarniaApp(QMainWindow):
         """Update source button styles"""
         logging.debug(f"Updating source button styles for: {active_source}")
         sources = {
-            "super": getattr(self.ui, "super_wallpaper_btn", None),
-            "favorites": getattr(self.ui, "fvrt_wallpapers_btn", None),
+            # "super": getattr(self.ui, "super_wallpaper_btn", None),
+            # "favorites": getattr(self.ui, "fvrt_wallpapers_btn", None),
             "added": getattr(self.ui, "added_wallpaper_btn", None)
         }
         
@@ -1930,15 +1529,12 @@ class TapeciarniaApp(QMainWindow):
             logging.info(f"Downloading online wallpaper: {url}")
             
             # Create progress dialog
-            self.progress_dialog = DownloadProgressDialog(self)
-            # self.progress_dialog.show()
-            self.progress_dialog.update_progress(0, "Starting download...")
             
             # Determine destination folder and filename
             if is_animated:
-                dest_folder = VIDEOS_DIR
+                dest_folder = SAVES_DIR
             else:
-                dest_folder = IMAGES_DIR
+                dest_folder = SAVES_DIR
             
             # Generate unique filename
             # timestamp = int(time.time())
@@ -1954,7 +1550,6 @@ class TapeciarniaApp(QMainWindow):
             # Connect signals
             self.download_thread.progress.connect(
                 lambda percent, status: (
-                    self.progress_dialog.update_progress(percent, status),
                     self._set_status(status)
                 )
             )
@@ -1968,8 +1563,6 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Online download setup failed: {e}", exc_info=True)
-            if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-                self.progress_dialog.close()
             self._fallback_to_local_shuffle(is_animated)
 
     def _on_online_download_done(self, file_path: str, is_animated: bool):
@@ -1978,10 +1571,11 @@ class TapeciarniaApp(QMainWindow):
         """
         logging.info(f"Online download completed: {file_path}")
         self._update_shuffle_button_states(None)
+        self.ui.randomButton.setDisabled(False)
+        self.ui.randomAnimButton.setDisabled(False)
+        self.ui.loadUrlButton.setDisabled(False)
         
         # Close progress dialog
-        if hasattr(self, 'progress_dialog') and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
         
         # Validate downloaded file
         if not self._validate_downloaded_file(file_path):
@@ -2019,8 +1613,6 @@ class TapeciarniaApp(QMainWindow):
         """
         logging.error(f"Online download error: {error_msg}")
         
-        if hasattr(self, "progress_dialog") and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
         
         # Extract is_animated from error context or use fallback
         is_animated = "animated" in error_msg.lower() or "video" in error_msg.lower()
@@ -2060,14 +1652,21 @@ class TapeciarniaApp(QMainWindow):
                 "No Videos", 
                 "No animated wallpapers found in your local collection."
             )
-            self.current_shuffle_type = None
             self._update_shuffle_button_states(None)
+            self.current_shuffle_type = None
             return
         
         selected = random.choice(video_files)
         logging.info(f"Selected local animated wallpaper: {selected.name}")
         self._apply_wallpaper_from_path(selected)
         self._update_url_input(str(selected))
+        self._update_shuffle_button_states(None)
+
+        # enable the buttons
+        self.ui.randomButton.setDisabled(False)
+        self.ui.randomAnimButton.setDisabled(False)
+        self.ui.loadUrlButton.setDisabled(False)
+
 
     def _perform_local_static_shuffle(self):
         """
@@ -2083,32 +1682,38 @@ class TapeciarniaApp(QMainWindow):
                 "No Images", 
                 "No wallpapers found in your local collection."
             )
-            self.current_shuffle_type = None
             self._update_shuffle_button_states(None)
+            self.current_shuffle_type = None
             return
         
         selected = random.choice(image_files)
         logging.info(f"Selected local static wallpaper: {selected.name}")
         self._apply_wallpaper_from_path(selected)
         self._update_url_input(str(selected))
+        self._update_shuffle_button_states(None)
+
+        # enable the buttons
+        self.ui.randomButton.setDisabled(False)
+        self.ui.randomAnimButton.setDisabled(False)
+        self.ui.loadUrlButton.setDisabled(False)
+
 
     def _on_download_error(self, error_msg: str):
         """Handle download errors"""
         logging.error(f"Download error: {error_msg}")
-        if hasattr(self, "progress_dialog") and self.progress_dialog.isVisible():
-            self.progress_dialog.close()
         QMessageBox.critical(self, "Download Error", error_msg)
         self._set_status(f"Download failed: {error_msg}")
+        self.set_buttons(True)
 
     # Settings management
     def _load_settings(self):
         """Load saved settings"""
         logging.info("Loading saved settings")
         # Load last video
-        last_video = self.config.get_last_video()
-        if last_video and hasattr(self.ui, "urlInput"):
-            self.ui.urlInput.setText(last_video)
-            logging.info(f"Loaded last video from config: {last_video}")
+        # last_video = self.config.get_last_video()
+        # if last_video and hasattr(self.ui, "urlInput"):
+        #     self.ui.urlInput.setText(last_video)
+        #     logging.info(f"Loaded last video from config: {last_video}")
 
         # Load range preference
         self.current_range = self.config.get_range_preference()
@@ -2395,7 +2000,56 @@ class TapeciarniaApp(QMainWindow):
                 except Exception as e:
                     logging.error(f"Failed to open favorites folder: {e}", exc_info=True)
                     QMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}")
+            
+            elif action == "id":
                 
+                image_id = params.get('id')
+                if image_id: 
+
+                    wallpaper_url = f"https://tapeciarnia.pl/program/pobierz_jpeg_v2.php?id={image_id}"
+
+
+                    logging.info(f"Executing default set_url_default command for URL: {wallpaper_url}")
+                    
+                    # --- CORE LOGIC DISPATCH: Default/Static Wallpaper ---
+                    # This handles the simple image URLs (e.g., .jpg, .png)
+                    # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
+                    
+                    reply = QMessageBox.question(
+                        self,
+                        "Confirm Wallpaper Change",
+                        f"Do you want to set the wallpaper from this URI?\n\ntapeciarnia:{image_id}",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No
+                    )
+                    
+                    # Store the user's decision
+                    confirmed = reply == QMessageBox.StandardButton.Yes
+                    self.last_uri_command = {
+                        "action": action,
+                        "url": wallpaper_url,
+                        "confirmed": confirmed
+                    }
+                    logging.info(f"URI command confirmation stored: {self.last_uri_command}")
+                    
+                    # Act on user's choice
+                    if confirmed:
+                        try:
+                            self.ui.urlInput.setText(f"tapeciarnia:{image_id}")
+                            self._set_status("Applying static wallpaper from URI...")
+                            self._apply_input_string(wallpaper_url)
+                        except Exception as e:
+                            logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
+                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                    else:
+                        self._set_status("Wallpaper change from URI was cancelled by user")
+                        
+                else:
+                    logging.error("set_url_default action received, but 'url' parameter is missing.")
+                    QMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
+
+
+
             else:
                 logging.warning(f"Unknown URI action received: {action}")
                 QMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")

@@ -156,8 +156,7 @@ def main():
 
         # ------- PRIMARY INSTANCE BEGINS --------
 
-        stylesheet_path = get_style_path(get_app_root())
-        load_stylesheet(app, stylesheet_path)
+        load_stylesheet(app, get_style_path())
         window = TapeciarniaApp()
 
         # Handle incoming URIs / messages

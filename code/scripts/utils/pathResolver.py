@@ -1,32 +1,61 @@
+import requests
+import logging
 
-import sys
-import os
-from pathlib import Path
-
-
-def get_app_root():
+def resolve_tapeciarnia_redirect(url: str) -> str | None:
     """
-    Determines the path of the running application/script's directory, 
-    handling both source code and bundled executables (PyInstaller/cx_Freeze).
+    Follow Tapeciarnia redirect and return the final image URL.
     """
-    # 1. Check for 'frozen' status (indicates a bundled executable)
-    if getattr(sys, 'frozen', False):
-        # If frozen, sys.executable is the path to the app file itself.
-        base_path = Path(sys.executable).resolve()
-    else:
-        # If not frozen, we use the path of the script that started the app.
-        base_path = Path(sys.argv[0]).resolve()
-        
-    # We return the directory containing the executable or the script.
-    return str(base_path.parent) 
+    try:
+        logging.warning(f"Following redirected path : {url}")
+        response = requests.get(url, allow_redirects=True, timeout=10)
 
-def get_mpv_path(base_path:str) -> str:
-    return os.path.join(base_path,"bin","mpv","mpv.exe")
+        if response.history:  # redirect happened
+            final_url = response.url
+            logging.info(f"Redirect resolved: {url} → {final_url}")
+            return final_url
 
-def get_weebp_path(base_path:str) -> str:
-    return os.path.join(base_path,"bin","weebp","weebp.exe")
+        # No redirect, just return original
+        logging.warning(f"Final path : {url}")
 
-def get_style_path(base_path:str):
-    return os.path.join(base_path,"ui","style","style.qss")
+        return url
 
-__all__ = ["get_app_root","get_weebp_path","get_mpv_path","get_style_path"]
+    except Exception as e:
+        logging.error(f"Failed to resolve redirect for {url} : {e}")
+        return None
+
+
+
+def fast_resolve_tapeciarnia_redirect(url: str) -> str | None:
+    """
+    Quickly resolve Tapeciarnia redirect URL using HEAD request.
+    Returns final image URL or None.
+    """
+
+    try:
+        response = requests.head(
+            url,
+            allow_redirects=True,
+            timeout=5
+        )
+
+        # The last response URL is the final image location
+        final_url = response.url
+
+        # Safety check: ensure the final URL is an image
+        if final_url.lower().endswith((".jpg", ".jpeg", ".png", ".webp" ".mp4")):
+            return final_url
+
+        return None
+
+    except Exception as e:
+        print(f"Redirect resolution failed: {e}")
+        return None
+
+
+if __name__ == "__main__":
+
+    final_image_url = fast_resolve_tapeciarnia_redirect(
+        "https://tapeciarnia.pl/program/pobierz_jpeg_v2.php?id=386422"
+    )
+
+    print(final_image_url)

@@ -8,7 +8,7 @@ import logging
 
 from PySide6.QtCore import QThread, Signal
 
-from utils.path_utils import VIDEOS_DIR,IMAGES_DIR
+from utils.path_utils import SAVES_DIR
 
 logger = logging.getLogger()
 
@@ -28,13 +28,13 @@ class DownloaderThread(QThread):
         """Ensure directories exist and are writable on both platforms"""
         logger.debug("Ensuring video directory exists and is writable")
         try:
-            VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Video directory ensured: {VIDEOS_DIR}")
+            SAVES_DIR.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Video directory ensured: {SAVES_DIR}")
             
             # On Linux, ensure proper permissions
             if platform.system() != "Windows":
                 try:
-                    os.chmod(VIDEOS_DIR, 0o755)
+                    os.chmod(SAVES_DIR, 0o755)
                     logger.debug("Set directory permissions on Linux")
                 except Exception as e:
                     logger.warning(f"Could not set directory permissions: {e}")
@@ -51,7 +51,7 @@ class DownloaderThread(QThread):
         try:
             # Configure yt-dlp with better error handling
             ydl_opts = {
-                'outtmpl': str(VIDEOS_DIR / '%(title)s.%(ext)s'),
+                'outtmpl': str(SAVES_DIR / '%(title)s.%(ext)s'),
                 'merge_output_format': 'mp4',
                 'noplaylist': True,
                 'continuedl': True,
@@ -141,13 +141,13 @@ class DownloaderThread(QThread):
         ]
         
         for pattern in possible_patterns:
-            for file_path in VIDEOS_DIR.glob(pattern):
+            for file_path in SAVES_DIR.glob(pattern):
                 if file_path.exists() and file_path.stat().st_size > 0:
                     logging.info(f"Found downloaded file: {file_path}")
                     return file_path
         
         # If no exact match, look for recent files in download directory
-        recent_files = sorted(VIDEOS_DIR.glob("*"), key=os.path.getmtime, reverse=True)
+        recent_files = sorted(SAVES_DIR.glob("*"), key=os.path.getmtime, reverse=True)
         for file_path in recent_files[:5]:  # Check 5 most recent files
             if file_path.exists() and file_path.stat().st_size > 0:
                 logging.info(f"Found recent file as download: {file_path}")
@@ -168,6 +168,8 @@ class DirectDownloadThread(QThread):
         self.url = url
         self.file_path = file_path
         self._cancelled = False
+    
+    # prevent running more then one intance of this class 
 
     def run(self):
         try:
@@ -269,7 +271,7 @@ class ImageDownloadThread(QThread):
                 
                 # Sanitize filename
                 filename = self._get_safe_filename(filename)
-                download_path = IMAGES_DIR / filename
+                download_path = SAVES_DIR / filename
             
             # Ensure destination directory exists
             download_path.parent.mkdir(parents=True, exist_ok=True)

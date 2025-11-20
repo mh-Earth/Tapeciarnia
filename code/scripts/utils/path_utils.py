@@ -33,12 +33,11 @@ def get_collections_folder() -> Path:
     return collection_dir
 
 COLLECTION_DIR = get_collections_folder()
-VIDEOS_DIR = COLLECTION_DIR / "Videos"
-IMAGES_DIR = COLLECTION_DIR / "Images" 
 FAVS_DIR = COLLECTION_DIR / "Favorites"
+SAVES_DIR = COLLECTION_DIR / "Saves"
 
 # Ensure folders exist
-for d in (COLLECTION_DIR, VIDEOS_DIR, IMAGES_DIR, FAVS_DIR):
+for d in (COLLECTION_DIR,SAVES_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 TMP_DOWNLOAD_FILE = COLLECTION_DIR / "download_path.tmp"
@@ -104,20 +103,19 @@ def get_folder_for_source(source_type: str) -> Path:
     """Get the corresponding folder path for a source type"""
     folder_map = {
         "favorites": FAVS_DIR,
-        "added": COLLECTION_DIR,
-        "super": COLLECTION_DIR,  # Fallback for super wallpaper
-        "all": COLLECTION_DIR,
-        "wallpaper": IMAGES_DIR,
-        "mp4": VIDEOS_DIR
+        "added": SAVES_DIR,
+        "super": SAVES_DIR,  # Fallback for super wallpaper
+        "all": SAVES_DIR,
+        "save": SAVES_DIR
     }
     return folder_map.get(source_type, COLLECTION_DIR)
 
 def get_folder_for_range(range_type: str) -> Path:
     """Get the corresponding folder path for a range type"""
     folder_map = {
-        "all": COLLECTION_DIR,
-        "wallpaper": IMAGES_DIR,
-        "mp4": VIDEOS_DIR
+        "all": SAVES_DIR,
+        "wallpaper": SAVES_DIR,
+        "mp4": SAVES_DIR
     }
     return folder_map.get(range_type, COLLECTION_DIR)
 

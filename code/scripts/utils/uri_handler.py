@@ -1,85 +1,118 @@
 import urllib.parse
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_DOMAIN = "tapeciarnia.pl"
+
+def _is_allowed_domain(url: str) -> bool:
+    """Return True only if the URL belongs to tapeciarnia.pl domain."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.netloc.lower()
+
+        # Accept both:
+        #   tapeciarnia.pl
+        #   *.tapeciarnia.pl
+        return host == ALLOWED_DOMAIN or host.endswith("." + ALLOWED_DOMAIN)
+    except:
+        return False
+
+
 def parse_uri_command(uri_string):
     """
-    Parses a custom URI string, handling both standard (://) and custom (:) formats.
-    
-    Standard: tapeciarnia://setwallpaper?url=...
-    Custom 1: tapeciarnia:https://image.jpg
-    Custom 2: tapeciarnia:mp4_url:https://video.mp4
+    Parses Tapeciarnia custom URI formats.
 
-    Args:
-        uri_string (str): The full URI string passed from the OS.
-
-    Returns:
-        tuple: (action_name, params_dict) or (None, None) on failure.
+    Supports:
+    - tapeciarnia://action?param=value
+    - tapeciarnia:https://image.jpg
+    - tapeciarnia:mp4_url:https://video.mp4
+    - tapeciarnia:https://tapeciarnia.pl/program/pobierz_jpeg_v2.php?id=123
+    - tapeciarnia:<ID>   → allowed always
     """
+
     try:
-        # 1. Parse the entire URL to get scheme and components
         parsed_uri = urllib.parse.urlparse(uri_string)
-        
-        # Check if the scheme is correct
-        if parsed_uri.scheme != 'tapeciarnia':
-            logger.warning(f"URI scheme mismatch: Expected 'tapeciarnia', got '{parsed_uri.scheme}'")
+
+        if parsed_uri.scheme != "tapeciarnia":
+            logger.warning(f"Invalid scheme: {parsed_uri.scheme}")
             return None, None
-            
+
         action = None
         params = {}
 
-        # --- Handling the new custom format (tapeciarnia:payload or tapeciarnia:action:payload) ---
-        # This format is identified when netloc and query are empty, and the path contains the command.
+        # --------------------------------------------------------------
+        # CUSTOM FORMAT
+        # --------------------------------------------------------------
         if not parsed_uri.netloc and not parsed_uri.query and parsed_uri.path:
             payload = parsed_uri.path.strip()
-            
-            # Case 1: tapeciarnia:ACTION:PAYLOAD (e.g., tapeciarnia:mp4_url:https://...)
-            # We look for a colon ONLY if the payload doesn't look like a standard URL itself (i.e., not starting with 'http')
-            if ':' in payload and not payload.lower().startswith('http'):
-                parts = payload.split(':', 1)
+
+            # 1) Pure numeric ID → always allowed
+            if re.fullmatch(r"\d+", payload):
+                action = "id"
+                params = {"id": payload}
+                return action, params
+
+            # 2) Format: tapeciarnia:action:URL
+            if ":" in payload and not payload.lower().startswith("http"):
+                parts = payload.split(":", 1)
                 action = parts[0].strip()
-                params = {'url': parts[1].strip()}
-            
-            # Case 2: tapeciarnia:PAYLOAD (e.g., tapeciarnia:https://...)
-            else:
-                # Default action for direct image/file URLs
-                action = "set_url_default" 
-                # If the URL ends in mp4, we can set the action to mp4_url for consistency
-                if payload.lower().endswith(('.mp4', '.webm', '.mov')):
+                url = parts[1].strip()
+
+                # Domain restriction
+                if not _is_allowed_domain(url):
+                    logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+                    return None, None
+
+                params = {"url": url}
+                return action, params
+
+            # 3) Direct URL tapeciarnia:https://...
+            if payload.lower().startswith("http"):
+                if not _is_allowed_domain(payload):
+                    logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+                    return None, None
+
+                # Auto-classify mp4
+                if payload.lower().endswith((".mp4", ".webm", ".mov")):
                     action = "mp4_url"
-                    
-                params = {'url': payload.strip()}
-                
-            logger.info(f"Successfully parsed CUSTOM URI. Action: {action}, Params: {params}")
-            return action, params
+                else:
+                    action = "set_url_default"
 
+                params = {"url": payload}
+                return action, params
 
-        # --- Handling the old standard format (tapeciarnia://action?param=value) ---
-        
-        # 2. Extract the action from path component (removing leading '/')
-        action = parsed_uri.path.strip('/')
-        
-        # CRITICAL FIX for standard format: If the path is empty, the action was likely misinterpreted as the netloc 
-        # (e.g., in "tapeciarnia://setwallpaper?url=..."). Use the netloc (authority) as the action if the path is empty.
+        # --------------------------------------------------------------
+        # STANDARD tapeciarnia://action?url=...
+        # --------------------------------------------------------------
+        action = parsed_uri.path.strip("/")
         if not action and parsed_uri.netloc:
-            action = parsed_uri.netloc.split('@')[-1].split(':')[0]
-            
-        # 3. Parse query parameters (only applicable to standard format)
+            action = parsed_uri.netloc.split("@")[-1].split(":")[0]
+
         query_params = urllib.parse.parse_qs(parsed_uri.query)
-        
-        # Convert list values to single string values (assuming single values for parameters)
         params = {k: v[0] for k, v in query_params.items()}
 
-        logger.info(f"Successfully parsed STANDARD URI. Action: {action}, Params: {params}")
-        
+        # If URL parameter exists — check domain
+        if "url" in params and not _is_allowed_domain(params["url"]):
+            logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+            return None, None
+
         return action, params
 
     except Exception as e:
-        logger.error(f"Failed to parse URI '{uri_string}': {e}")
+        logger.error(f"URI parsing error: {e}")
         return None, None
-    
-if __name__ == "__main__":
 
-    action , param  = parse_uri_command("tapeciarnia:https://netplus.pl/comfyui/tmp/16692.jpg")
-    print(action,param)
+
+# Standalone testing
+if __name__ == "__main__":
+    tests = [
+        "tapeciarnia:12345",
+        "tapeciarnia:https://tapeciarnia.pl/img.jpg",
+        "tapeciarnia:mp4_url:https://tapeciarnia.pl/v.mp4",
+        "tapeciarnia://setwallpaper?url=https://www.tapeciarnia.pl/image.jpg",
+    ]
+
+    for t in tests:
+        print(t, "→", parse_uri_command(t))

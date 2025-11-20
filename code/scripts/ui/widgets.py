@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QTimer
 
-from utils.path_utils import VIDEOS_DIR, IMAGES_DIR, FAVS_DIR
+from utils.path_utils import SAVES_DIR
 import logging
 from pathlib import Path
 import os
@@ -158,18 +158,6 @@ class EnhancedDragDropWidget(QWidget):
         buttons_layout.setContentsMargins(20, 10, 20, 10)
         buttons_layout.setSpacing(15)
         
-        # NEW: Add to Collection button
-        self.add_to_collection_btn = QPushButton(self.parent_app.lang["uploadSection"]["addToCollectionButton"])
-        self.add_to_collection_btn.clicked.connect(self.add_to_collection)
-        self.add_to_collection_btn.setProperty("class", "ghost")
-        self.add_to_collection_btn.setMinimumHeight(35)
-        
-        # NEW: Add to Favorites button  
-        self.add_to_favorites_btn = QPushButton(self.parent_app.lang["uploadSection"]["addToFavoritesButton"])
-        self.add_to_favorites_btn.clicked.connect(self.add_to_favorites)
-        self.add_to_favorites_btn.setProperty("class", "ghost")
-        self.add_to_favorites_btn.setMinimumHeight(35)
-        
         # Set as Wallpaper button (appears after selecting collection/favorites)
         self.upload_btn = QPushButton(self.parent_app.lang["uploadSection"]["setAsWallpaperButton"])
         self.upload_btn.clicked.connect(self.set_as_wallpaper)
@@ -184,8 +172,6 @@ class EnhancedDragDropWidget(QWidget):
         self.reset_btn.setMinimumHeight(35)
         self.reset_btn.setVisible(False)  # Hidden initially
 
-        buttons_layout.addWidget(self.add_to_collection_btn)
-        buttons_layout.addWidget(self.add_to_favorites_btn)
         buttons_layout.addWidget(self.upload_btn)
         buttons_layout.addWidget(self.reset_btn)
         
@@ -215,7 +201,32 @@ class EnhancedDragDropWidget(QWidget):
         self.supported_label.setText(self.parent_app.lang["uploadSection"]["supportedFormatsHint"])
         self.upload_btn.setText(self.parent_app.lang["uploadSection"]["setAsWallpaperButton"])
         self.reset_btn.setText(self.parent_app.lang["settings"]["resetButton"])
-    
+
+
+    def _create_file_path(self):
+        """Add file to specified destination and show set as wallpaper option"""
+        if not self.dropped_file_path:
+            return
+        
+        source_path = Path(self.dropped_file_path)
+        
+        # Determine destination folder
+        dest_folder = SAVES_DIR
+        
+        # Copy file with duplicate handling
+        dest_path = SAVES_DIR / source_path.name
+        counter = 1
+        original_stem = source_path.stem
+        while dest_path.exists():
+            dest_path = dest_folder / f"{original_stem}_{counter}{source_path.suffix}"
+            counter += 1
+        
+        shutil.copy2(source_path, dest_path)
+        
+        # Store the destination path for potential wallpaper setting
+        self.destination_path = str(dest_path)
+
+
     def dragEnterEvent(self, event):
         """Check for valid file types when file enters the drop area"""
         logging.debug("Drag enter event in EnhancedDragDropWidget")
@@ -273,9 +284,7 @@ class EnhancedDragDropWidget(QWidget):
                 self.uploadIcon.hide()
                 
                 # Show collection/favorites buttons, hide set as wallpaper initially
-                self.add_to_collection_btn.show()
-                self.add_to_favorites_btn.show()
-                self.upload_btn.hide()  # Hidden until user selects destination
+                self.upload_btn.show()  # Hidden until user selects destination
                 self.reset_btn.show()   # Always show reset when file is selected
                 
                 logging.info(f"Valid {file_type.lower()} file selected: {filename}")
@@ -287,83 +296,12 @@ class EnhancedDragDropWidget(QWidget):
         
         event.acceptProposedAction()
 
-    def add_to_collection(self):
-        """Add dropped file to collection"""
-        logging.info("Add to Collection button clicked")
-        if self.dropped_file_path:
-            try:
-                self._add_file_to_destination("collection")
-                logging.info("File added to collection successfully")
-            except Exception as e:
-                logging.error(f"Failed to add to collection: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to add to collection: {str(e)}")
-    
-    def add_to_favorites(self):
-        """Add dropped file to favorites"""
-        logging.info("Add to Favorites button clicked")
-        if self.dropped_file_path:
-            try:
-                self._add_file_to_destination("favorites")
-                logging.info("File added to favorites successfully")
-            except Exception as e:
-                logging.error(f"Failed to add to favorites: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to add to favorites: {str(e)}")
-
-    def _add_file_to_destination(self, destination):
-        """Add file to specified destination and show set as wallpaper option"""
-        if not self.dropped_file_path:
-            return
-        
-        source_path = Path(self.dropped_file_path)
-        
-        # Determine destination folder
-        if destination == "favorites":
-            dest_folder = FAVS_DIR
-            dest_name = "favorites"
-        else:  # collection
-            if source_path.suffix.lower() in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
-                dest_folder = VIDEOS_DIR
-            else:
-                dest_folder = IMAGES_DIR
-            dest_name = "collection"
-        
-        # Copy file with duplicate handling
-        dest_path = dest_folder / source_path.name
-        counter = 1
-        original_stem = source_path.stem
-        while dest_path.exists():
-            dest_path = dest_folder / f"{original_stem}_{counter}{source_path.suffix}"
-            counter += 1
-        
-        shutil.copy2(source_path, dest_path)
-        
-        # Store the destination path for potential wallpaper setting
-        self.destination_path = str(dest_path)
-        
-        # Update UI to show success and ask to set as wallpaper
-        self.upload_text.setText(f"Added to {dest_name}!\n\n{source_path.name}")
-        
-        # Hide collection/favorites buttons, show set as wallpaper button
-        self.add_to_collection_btn.hide()
-        self.add_to_favorites_btn.hide()
-        self.upload_btn.show()  # Show set as wallpaper option
-        self.reset_btn.show()   # Keep reset visible
-        
-        # Show success message
-        QMessageBox.information(
-            self,
-            "Success",
-            f"File successfully added to {dest_name}!\n\nWould you like to set it as wallpaper now?",
-            QMessageBox.StandardButton.Ok
-        )
-        
-        logging.info(f"File added to {dest_name}: {source_path.name} -> {dest_path}")
-    
     def set_as_wallpaper(self):
         """Set the added file as wallpaper"""
         logging.info("Set as Wallpaper button clicked")
-        if hasattr(self, 'destination_path') and self.destination_path:
+        if hasattr(self, 'dropped_file_path') and self.dropped_file_path:
             try:
+                self._create_file_path()
                 # Store current wallpaper before setting new one
                 if not hasattr(self, 'previous_wallpaper') or not self.previous_wallpaper:
                     self.previous_wallpaper = self.get_current_wallpaper()
@@ -393,7 +331,7 @@ class EnhancedDragDropWidget(QWidget):
                 logging.info(f"Wallpaper set successfully and saved to config: {os.path.basename(self.destination_path)}")
                 
                 # Hide buttons after successful set with delay
-                QTimer.singleShot(3000, self.reset_selection)
+                QTimer.singleShot(1000, self.reset_selection)
                 
             except Exception as e:
                 logging.error(f"Failed to set wallpaper: {e}", exc_info=True)
@@ -466,7 +404,7 @@ class EnhancedDragDropWidget(QWidget):
         """Check if file is a valid wallpaper type with comprehensive validation"""
         valid_extensions = (
             # Images
-            '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.tiff',
+            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff',
             # Videos  
             '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv', '.m4v'
         )

@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Thread, Event
 from typing import Optional, Callable
 
-from utils.path_utils import COLLECTION_DIR, VIDEOS_DIR, IMAGES_DIR, FAVS_DIR
+from utils.path_utils import COLLECTION_DIR, FAVS_DIR,SAVES_DIR
 
 
 
@@ -143,9 +143,9 @@ class WallpaperScheduler:
             # Favorites should ONLY use FAVS_DIR
             search_folders = [FAVS_DIR]
             source_type = "favorites"
-        elif self.source == str(COLLECTION_DIR):
+        elif self.source == str(SAVES_DIR):
             # My Collection should include ALL folders
-            search_folders = [VIDEOS_DIR, IMAGES_DIR, FAVS_DIR]
+            search_folders = [SAVES_DIR]
             source_type = "collection"
         else:
             # Custom source
@@ -159,10 +159,10 @@ class WallpaperScheduler:
             extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
             range_desc = "videos only"
         elif self.range_type == "wallpaper":
-            extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+            extensions = ('.jpg', '.jpeg', '.png')
             range_desc = "images only"
         else:  # "all"
-            extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.mp4', '.mkv', '.webm', '.avi', '.mov')
+            extensions = ('.jpg', '.jpeg', '.png', '.mp4')
             range_desc = "all media types"
         
         logging.debug(f"File extensions for {range_desc}: {extensions}")

@@ -60,6 +60,7 @@ download_path.tmp
 # Config files (user-specific)
 config.json
 *.log
+app.log.*
 
 *.pyc
 # python venv folders

@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from .path_utils import IMAGES_DIR, TMP_DOWNLOAD_FILE
+from .path_utils import SAVES_DIR, TMP_DOWNLOAD_FILE
 
 
 
@@ -21,7 +21,7 @@ def download_image(url: str) -> str:
         
         # Determine file extension
         ext = Path(url).suffix 
-        if not ext or ext.lower() not in ('.jpg', '.jpeg', '.png', '.bmp', '.gif'):
+        if not ext or ext.lower() not in ('.jpg', '.jpeg', '.png',  '.gif'):
             ext = '.jpg'
             logging.debug(f"No valid extension in URL, defaulting to: {ext}")
         else:
@@ -30,12 +30,12 @@ def download_image(url: str) -> str:
         # Create safe filename
         original_stem = Path(url).stem
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", original_stem)[:60]
-        dest = IMAGES_DIR / f"{safe}{ext}"
+        dest = SAVES_DIR / f"{safe}{ext}"
         logging.debug(f"Original filename: {original_stem}, Safe filename: {safe}{ext}")
         
         # Ensure directory exists
-        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-        logging.debug(f"Ensured directory exists: {IMAGES_DIR}")
+        SAVES_DIR.mkdir(parents=True, exist_ok=True)
+        logging.debug(f"Ensured directory exists: {SAVES_DIR}")
         
         # Download and save file
         file_size = 0
