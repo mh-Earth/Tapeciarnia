@@ -1,11 +1,13 @@
-import json
-from utils.path_utils import BASE_DIR
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal,qIsNull
-import logging
-# import config
-from models.config import Config
 from PySide6.QtWidgets import QMessageBox
+
+import json
+import logging
+from models.config import Config
+from utils.path_utils import BASE_DIR
+from utils.singletons import get_config
+
 class LanguageController(QObject):
     # emit a signal when language is changed
     language_changed = Signal(dict)
@@ -15,7 +17,7 @@ class LanguageController(QObject):
         self.TRANSLATIONS_FILE = BASE_DIR / "translations" / "languages.json"
         if not self.TRANSLATIONS_FILE.exists():
             logging.warning("Translations file does not exist at initialization.")
-        self.config = Config()
+        self.config = get_config()
 
     # check for translations file
     def check_translations_file(self) -> bool:

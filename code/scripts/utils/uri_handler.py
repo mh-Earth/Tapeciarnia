@@ -1,22 +1,33 @@
 import urllib.parse
 import logging
 import re
-
+from utils.singletons import get_config
 logger = logging.getLogger(__name__)
 
-ALLOWED_DOMAIN = "tapeciarnia.pl"
+
 
 def _is_allowed_domain(url: str) -> bool:
-    """Return True only if the URL belongs to tapeciarnia.pl domain."""
+    """Return True only if the URL belongs to any allowed domain or its subdomains."""
     try:
         parsed = urllib.parse.urlparse(url)
-        host = parsed.netloc.lower()
+        host = parsed.netloc.lower().strip()
 
-        # Accept both:
-        #   tapeciarnia.pl
-        #   *.tapeciarnia.pl
-        return host == ALLOWED_DOMAIN or host.endswith("." + ALLOWED_DOMAIN)
-    except:
+        # If empty host → invalid URL
+        if not host:
+            return False
+
+        for domain in get_config().get_allowed_domains():
+            domain = domain.lower()
+            # Exact match
+            if host == domain:
+                return True
+            # Subdomain allowed
+            if host.endswith("." + domain):
+                return True
+
+        return False
+
+    except Exception:
         return False
 
 

@@ -2,11 +2,10 @@ import os
 import sys
 import random
 import logging
-import shutil
 import logging
 from pathlib import Path
-import time
 import webbrowser
+import json
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QMessageBox, 
@@ -38,22 +37,22 @@ except ImportError as e:
 
 # Import core modules
 from core.wallpaper_controller import WallpaperController
-from core.download_manager import DownloaderThread,DirectDownloadThread,ImageDownloadThread
+from core.download_manager import DirectDownloadThread,ImageDownloadThread
 from core.scheduler import WallpaperScheduler
 from  core.language_controller import LanguageController
+from core.login_handler import LoginWorker
 # Import utilities
 from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
 from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, fetch_shuffled_wallpaper, resource_path
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
-
+from utils.singletons import get_config
 # Import models
 from models.config import Config
 
 # Import UI components
-from .widgets import FadeOverlay
-from .dialogs import DownloadProgressDialog, ShutdownProgressDialog
+from .dialogs import ShutdownProgressDialog
 
 
 
@@ -71,7 +70,7 @@ class TapeciarniaApp(QMainWindow):
         self.scheduler = WallpaperScheduler()
         self.language_controller = LanguageController()
         self.scheduler.set_change_callback(self._apply_wallpaper_from_path)
-        self.config = Config()
+        self.config = get_config()
 
         self._set_lang()
         # connect to the language controller signals
@@ -86,10 +85,8 @@ class TapeciarniaApp(QMainWindow):
         self.auto_pause_process = None
         self.last_wallpaper_path = None
         self.current_shuffle_mode = None
+        self.isLogin:bool = False # temporary
 
-        # UI components
-        self.fade_overlay = FadeOverlay(self)
-        self.fade_overlay.hide()
 
         # Enhanced drag & drop
         self.drag_drop_widget = EnhancedDragDropWidget(self)
@@ -103,9 +100,22 @@ class TapeciarniaApp(QMainWindow):
         self._setup_ui()
         self._setup_tray()
         self._load_settings()
+        self._setLogInState()
         
 
         logging.info("TapeciarniaApp initialization completed successfully")
+
+    def _setLogInState(self):
+        if self.isLogin:
+            self.ui.emailInput.hide()
+            self.ui.passwordInput.hide()
+            self.ui.logInBnt.setText("Log out")
+        else:
+            self.ui.emailInput.show()
+            self.ui.passwordInput.show()
+            self.ui.logInBnt.setText("Log in")
+
+        self.update()
 
 
     def upload_area_mousePressEvent(self, event):
@@ -855,16 +865,6 @@ class TapeciarniaApp(QMainWindow):
         }
         return source_names.get(source, "Custom Source")
 
-    # def _get_range_display_name(self):
-    #     """Get display name for current range"""
-    #     range_names = {
-    #         "all": "All Types",
-    #         "wallpaper": "Images Only", 
-    #         "mp4": "Videos Only"
-    #     }
-    #     return range_names.get(self.current_range, "All Types")
-    
-
     def on_browse_clicked(self):
         """Browse web for wallpapers"""
         logging.info("Browse button clicked")
@@ -954,9 +954,9 @@ class TapeciarniaApp(QMainWindow):
 
     # Source selection
     def on_super_wallpaper(self):
-        """Super Wallpaper source"""
-        logging.info("Super Wallpaper source selected")
-        self._set_status("Super Wallpaper source selected")
+        # """Super Wallpaper source"""
+        # logging.info("Super Wallpaper source selected")
+        # self._set_status("Super Wallpaper source selected")
         QMessageBox.information(self, "Super Wallpaper", 
                             "Super Wallpaper feature - Premium curated wallpapers coming soon!")
 
@@ -1081,7 +1081,9 @@ class TapeciarniaApp(QMainWindow):
         self.ui.randomButton.setDisabled(not enabled)
         self.ui.randomAnimButton.setDisabled(not enabled)
         self.ui.loadUrlButton.setDisabled(not enabled)
-
+        self.ui.logInBnt.setEnabled(not enabled)
+        self.ui.resetButton.setEnabled(not enabled)
+        self.ui.startButton.setEnabled(not enabled)
 
 
     def _apply_input_string(self, text: str):
@@ -1151,10 +1153,10 @@ class TapeciarniaApp(QMainWindow):
     def _handle_local_file(self, file_path: Path):
         """Handle local file application"""
         logging.info(f"Processing local file: {file_path}")
-        if file_path.suffix.lower() in (".mp4", ".mkv", ".webm", ".avi", ".mov"):
+        if file_path.suffix.lower() in self.config.get_valid_video_extensions():
             logging.debug("Local file is video, copying to videos directory")
             self._apply_video(str(file_path))
-        elif file_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp", ".gif"):
+        elif file_path.suffix.lower() in self.config.get_valid_image_extensions():
             logging.debug("Local file is image, copying to images directory")
             self._apply_image(str(file_path))
         else:
@@ -1816,15 +1818,94 @@ class TapeciarniaApp(QMainWindow):
     
     def on_login_clicked(self):
         """Handle login button click - show Coming Soon message"""
-        logging.info("Login button clicked - showing coming soon message")
+        logging.info("Login button clicked")
+        self.ui.logInBnt.setEnabled(False)  
+        if not self.isLogin:
+            email = self.ui.emailInput.text().strip()
+            password = self.ui.passwordInput.text().strip()
+
+            if email and password:
+                url = "https://tapeciarnia.pl/program/login_2025.php"
+                payload = {
+                "login": email, # aka username
+                "key": password, # aka password
+                "lang": self.config.get_language()
+                }
+
+                logging.debug(payload)
+                login = LoginWorker(url=url, payload=payload,method="GET")
+                login.success.connect(self._on_login_success)
+                login.failed.connect(lambda e: self._on_login_failed(data=e,login_worker=login))
+                login.start()
+
+            else:
+                self.ui.logInBnt.setEnabled(True)  
+                QMessageBox.information(
+                    self,
+                    "Invalid credential",
+                    "Please enter valid credentials",
+                    QMessageBox.StandardButton.Ok
+                )
+
+        else:
+            self.handle_log_out()
+
+    
+    def _on_login_success(self,data:dict):
+        self.ui.logInBnt.setEnabled(True)
+        if data.get("is_ok") == True:
+            self.isLogin = True
+            self._setLogInState()
+            self.config.set_login_status(self.isLogin)
+
+            self.ui.passwordInput.clear()
+            self.ui.emailInput.clear()
+
+            self.config.set_login_key(data.get("key"))
+            self.config.set_login(data.get("login"))
+
+            QMessageBox.information(
+                self,
+                "Log in successfull",
+                str(data),
+                QMessageBox.StandardButton.Ok
+            )
+            logging.info("Logging in success")
+
+            # hide the input areas and change the text on log in bnt to log out
         
+        else:
+            QMessageBox.information(
+                self,
+                "Log in faild",
+                str(data),
+                QMessageBox.StandardButton.Ok
+            )
+            logging.info("Logging failed")
+
+        
+
+    
+    def _on_login_failed(self,data,login_worker:LoginWorker):
+        self.ui.logInBnt.setEnabled(True)
         QMessageBox.information(
             self,
-            "Coming Soon",
-            "Login functionality will be available in a future update!\n\n"
-            "For now, enjoy all the wallpaper features without an account.",
+            "Log in faild",
+            str(data),
             QMessageBox.StandardButton.Ok
         )
+        logging.info("Logging failed")
+        login_worker.stop()
+        logging.warning(f"Logging in failed: {data}")
+
+    def handle_log_out(self):
+        self.ui.logInBnt.setEnabled(True)
+        self.isLogin = False
+        self.config.set_login_status(self.isLogin)
+        self.config.clear_session()
+        self._setLogInState()
+        self.ui.urlInput.clear()
+        self.ui.passwordInput.clear()
 
     def _exit_app(self):
         """Properly quit the application from tray menu with confirmation and progress"""
@@ -1847,14 +1928,12 @@ class TapeciarniaApp(QMainWindow):
     def handle_startup_uri(self, action, params):
             """
             Processes the URI command received upon application launch, handling both
-            standard (setwallpaper) and custom (set_url_default, mp4_url) formats.
+            standard (setwallpaper) and custom (set_url_default, mp4_url ,id) formats.
             
             Args:
                 action (str): The primary command (e.g., 'setwallpaper', 'mp4_url').
                 params (dict): Dictionary of query parameters (must contain 'url' for most actions).
             """
-            # Note: Ensure you have 'import logging' and 'from PySide6.QtWidgets import QMessageBox'
-            # in ui/main_window.py
             
             logging.info(f"Handling startup URI. Action: {action}, Params: {params}")
 

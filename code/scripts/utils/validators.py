@@ -6,6 +6,9 @@ import os
 import urllib
 import re
 from urllib.parse import urlparse, parse_qs
+import requests
+from utils.singletons import get_config
+
 
 
 def is_image_url_or_path(s: str) -> bool:
@@ -22,7 +25,7 @@ def is_image_url_or_path(s: str) -> bool:
     # Check HTTP URL with image extension
     if s.startswith("http"):
         # More flexible pattern to handle query parameters and URL fragments
-        pattern = r"\.(jpe?g|png|bmp|gif|webp)(\?.*)?$"
+        pattern = r"\.(jpe?g|png|gif|webp)(\?.*)?$"
         return bool(re.search(pattern, s))
     
     return False
@@ -46,10 +49,9 @@ def is_video_url_or_path(s: str) -> bool:
             return True
         
         # Also check for video hosting platforms
-        video_hosts = [
-            "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com",
-            "twitch.tv", "instagram.com", "tiktok.com", "facebook.com/watch"
-        ]
+        config = get_config()
+        video_hosts = config.get_allowed_domains()
+
         return any(host in s for host in video_hosts)
     
     return False
@@ -82,13 +84,14 @@ def validate_url_or_path(s: str) -> Optional[str]:
         if parsed.scheme in ("http", "https") and parsed.netloc:
             return s  # Valid URL
 
-    # --- Custom Scheme: tapeciarnia: ---
-    if lower.startswith("tapeciarnia:"):
-        # Extract anything after "tapeciarnia:" including optional brackets
-        m = re.match(r"tapeciarnia:\[?(.*?)\]?$", s, re.IGNORECASE)
-        if m:
-            inner = m.group(1).strip()
-            return inner if inner else None
+    # As uri will not set as url text so we don't need this check
+    # # --- Custom Scheme: tapeciarnia: ---
+    # if lower.startswith("tapeciarnia:"):
+    #     # Extract anything after "tapeciarnia:" including optional brackets
+    #     m = re.match(r"tapeciarnia:\[?(.*?)\]?$", s, re.IGNORECASE)
+    #     if m:
+    #         inner = m.group(1).strip()
+    #         return inner if inner else None
 
     return None
 
@@ -131,13 +134,9 @@ def validate_tapeciarnia_url(s: str) -> Optional[str]:
         return None
 
     domain = parsed.netloc.lower()
+    config = get_config()
 
-    allowed_domains = {
-        "tapeciarnia.pl",
-        "www.tapeciarnia.pl",
-        "netplus.pl",
-        "www.netplus.pl"
-    }
+    allowed_domains = config.get_allowed_domains()
 
     if domain in allowed_domains:
         return s
@@ -171,9 +170,9 @@ def is_tapeciarnia_redirect_url(url: str):
     """
     try:
         parsed = urlparse(url)
-
+        config = get_config()
         # Must be tapeciarnia.pl
-        if parsed.netloc.lower() not in ("tapeciarnia.pl", "www.tapeciarnia.pl"):
+        if parsed.netloc.lower() not in config.get_allowed_domains():
             return None
 
         # Must match the redirect script

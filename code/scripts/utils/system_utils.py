@@ -141,6 +141,8 @@ def get_current_desktop_wallpaper() -> Optional[str]:
     else:
         logging.warning(f"Unsupported platform for wallpaper retrieval: {sys.platform}")
         return None
+    
+    
 def set_static_desktop_wallpaper(path: str) -> bool:
     """
     Set wallpaper on Windows (multi-monitor supported via stitching)

@@ -2,65 +2,14 @@ from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QProgressBar, QSizePolicy, QMessageBox
 )
-from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QTimer
+from PySide6.QtGui import  QPixmap,QCursor
+from PySide6.QtCore import Qt, QTimer
 
 from utils.path_utils import SAVES_DIR
 import logging
 from pathlib import Path
 import os
 import shutil
-
-
-class FadeOverlay(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self._pixmap_old = None
-        self._pixmap_new = None
-        self._opacity = 0.0
-        self._anim = None
-        if parent:
-            self.resize(parent.size())
-        else:
-            self.resize(800, 600)
-
-    def set_pixmaps(self, old, new):
-        self._pixmap_old = old
-        self._pixmap_new = new
-        self._opacity = 0.0
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        if self._pixmap_old:
-            painter.setOpacity(1.0)
-            painter.drawPixmap(self.rect(), self._pixmap_old)
-        if self._pixmap_new:
-            painter.setOpacity(self._opacity)
-            painter.drawPixmap(self.rect(), self._pixmap_new)
-
-    def animate_to(self, duration=600):
-        anim = QPropertyAnimation(self, b"overlayOpacity", self)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setDuration(duration)
-        anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        anim.start()
-        self._anim = anim
-
-    def getOpacity(self):
-        return self._opacity
-
-    def setOpacity(self, v):
-        self._opacity = float(v)
-        self.update()
-
-    overlayOpacity = Property(float, getOpacity, setOpacity)
-
 
 class DownloadProgressDialog(QDialog):
     def __init__(self, parent=None):
@@ -164,6 +113,8 @@ class EnhancedDragDropWidget(QWidget):
         self.upload_btn.setProperty("class", "primary")
         self.upload_btn.setMinimumHeight(35)
         self.upload_btn.setVisible(False)  # Hidden initially
+        self.upload_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
         
         # Reset button (always visible when file is selected)
         self.reset_btn = QPushButton(self.parent_app.lang["settings"]["resetButton"])
@@ -171,6 +122,8 @@ class EnhancedDragDropWidget(QWidget):
         self.reset_btn.setProperty("class", "ghost")
         self.reset_btn.setMinimumHeight(35)
         self.reset_btn.setVisible(False)  # Hidden initially
+        self.reset_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
 
         buttons_layout.addWidget(self.upload_btn)
         buttons_layout.addWidget(self.reset_btn)

@@ -1,5 +1,6 @@
 import requests
 import logging
+from utils.singletons import get_config
 
 def resolve_tapeciarnia_redirect(url: str) -> str | None:
     """
@@ -42,7 +43,7 @@ def fast_resolve_tapeciarnia_redirect(url: str) -> str | None:
         final_url = response.url
 
         # Safety check: ensure the final URL is an image
-        if final_url.lower().endswith((".jpg", ".jpeg", ".png", ".webp" ".mp4")):
+        if final_url.lower().endswith(tuple(get_config().get_all_valid_extensions())):
             return final_url
 
         return None
