@@ -16,6 +16,14 @@ class Config:
         self.ensure_valid_video_extensions()
         logging.info("QSettings backend initialized")
 
+    @staticmethod
+    def to_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in ("true", "1", "yes", "on")
+        return bool(value)
+
     # -------- Generic get/set -------- #
     def get(self, key: str, default=None):
         value = self.settings.value(key, default)
@@ -34,15 +42,24 @@ class Config:
         self.set("last_video", path)
 
     def get_scheduler_settings(self):
-        source = self.get("scheduler_source")
-        interval = int(self.get("scheduler_interval", 30))
-        enabled = self.get("scheduler_enabled", False) in [True, "true", "1", 1]
-        return source, interval, enabled
+        enabled:bool = self.get("scheduler_enabled", False)
+        source:str = self.get("scheduler_source")
+        interval:int = int(self.get("scheduler_interval", 30))
+        range_type:str = self.get("scheduler_range_type","all")
+        return enabled, source, interval, range_type
 
-    def set_scheduler_settings(self, source, interval, enabled):
+    def set_scheduler_settings(self,enabled:bool, source:str, interval:int, range_type:str):
         self.set("scheduler_source", source)
         self.set("scheduler_interval", interval)
+        self.set("scheduler_range_type", range_type)
         self.set("scheduler_enabled", enabled)
+
+    def get_scheduler_enabled(self) -> bool:
+        # print(self.get("scheduler_enabled_state",False))
+        return self.to_bool(self.get("scheduler_enabled_state",False))
+        
+    def set_scheduler_enabled(self,scheduler_enabled:bool):
+        self.set("scheduler_enabled_state",scheduler_enabled)
 
     def get_language(self):
         lang = self.get("language",current_system_locale())
@@ -254,9 +271,6 @@ class Config:
         all_exts = image_exts + video_exts
         logging.debug(f"Combined valid extensions: {all_exts}")
         return all_exts
-
-
-
 
 
     def __str__(self):

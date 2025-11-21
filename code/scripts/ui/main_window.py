@@ -41,6 +41,7 @@ from core.download_manager import DirectDownloadThread,ImageDownloadThread
 from core.scheduler import WallpaperScheduler
 from  core.language_controller import LanguageController
 from core.login_handler import LoginWorker
+from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
 from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, fetch_shuffled_wallpaper, resource_path
@@ -188,34 +189,20 @@ class TapeciarniaApp(QMainWindow):
         """Shuffle through animated wallpapers - try online first, fallback to local"""
         logging.info("Shuffle animated triggered - trying online first")
         self.current_shuffle_type = 'animated'
+
+        # Update button states
         self._update_shuffle_button_states('animated')
-        # disable another button 
-        self.ui.randomButton.setDisabled(True)
+        self.set_buttons(False)
         self._set_status("Fetching online animated wallpaper...")
         
-        # Update button states
         
-        # Check internet connection first
-        if not is_connected_to_internet():
-            logging.warning("No internet connection, using local shuffle")
-            self._set_status("No internet - using local animated wallpapers")
-            self._fallback_to_local_shuffle(True)
-            return
-        
-        try:
-            # Try to fetch online wallpaper
-            online_url = fetch_shuffled_wallpaper(self.x,self.y,True,self.language_controller.get_current_language())
-            logging.debug(f"Online URl : {online_url}")
-            if online_url:
-                # Download and set online wallpaper
-                self.download_and_set_online_wallpaper(online_url, is_animated=True)
-            else:
-                # Online fetch failed, use local
-                self._fallback_to_local_shuffle(True)
-                
-        except Exception as e:
-            logging.error(f"Online shuffle animated failed: {e}")
-            self._fallback_to_local_shuffle(True)
+
+        # Try to fetch online wallpaper
+        fetch_online_url = Shuffler(animated=True)
+        fetch_online_url.success.connect(lambda e: self.download_and_set_online_wallpaper(e,is_animated=True))
+        fetch_online_url.failed.connect(lambda e: self._fallback_to_local_shuffle(is_animated=True,fallback_reason=e))
+        fetch_online_url.run()
+
 
 
 
@@ -225,34 +212,19 @@ class TapeciarniaApp(QMainWindow):
         """Shuffle through static wallpapers - try online first, fallback to local"""
         logging.info("Shuffle wallpaper triggered - trying online first")
         self.current_shuffle_type = 'wallpaper'
-        self._update_shuffle_button_states('wallpaper')
-        self.ui.randomAnimButton.setDisabled(True)
-        self._set_status("Fetching online wallpaper...")
         
         # Update button states
+        self._update_shuffle_button_states('wallpaper')
+        self.set_buttons(False)
+        self._set_status("Fetching online wallpaper...")
         
-        # Check internet connection first
-        if not is_connected_to_internet():
-            logging.warning("No internet connection, using local shuffle")
-            self._set_status("No internet - using local wallpapers")
-            self._fallback_to_local_shuffle(False)
-            return
-        
-        try:
-            # Try to fetch online wallpaper
-            online_url = fetch_shuffled_wallpaper(self.x,self.y,False,self.language_controller.get_current_language())
-            logging.debug(f"Online URl : {online_url}")
-            
-            if online_url:
-                # Download and set online wallpaper
-                self.download_and_set_online_wallpaper(online_url, is_animated=False)
-            else:
-                # Online fetch failed, use local
-                self._fallback_to_local_shuffle(False)
-                
-        except Exception as e:
-            logging.error(f"Online shuffle wallpaper failed: {e}")
-            self._fallback_to_local_shuffle(False)
+
+        # Try to fetch online wallpaper
+        animated = False
+        fetch_online_url = Shuffler(animated=animated)
+        fetch_online_url.success.connect(lambda e: self.download_and_set_online_wallpaper(e,is_animated=animated))
+        fetch_online_url.failed.connect(lambda e: self._fallback_to_local_shuffle(e,is_animated=animated,fallback_reason=e))
+        fetch_online_url.run()
 
 
     def _perform_reset(self):
@@ -709,7 +681,9 @@ class TapeciarniaApp(QMainWindow):
 
     def _update_scheduler_ui_state(self):
         """Show/hide interval, range, and start button based on scheduler state"""
-        enabled = hasattr(self.ui, "enabledCheck") and self.ui.enabledCheck.isChecked()
+
+        enabled = self.config.get_scheduler_enabled()
+
         logging.debug(f"Updating scheduler UI state: enabled={enabled}")
         
         # Show/hide interval and range controls
@@ -786,7 +760,8 @@ class TapeciarniaApp(QMainWindow):
         
         range_type = self.current_range
         self.scheduler.set_range(range_type)
-        
+
+        self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type=range_type)
         # Check if there are any files matching the current settings
         logging.info(f"Checking for files with source: {source}, range: {range_type}")
         available_files = self.scheduler._get_media_files()
@@ -1014,13 +989,16 @@ class TapeciarniaApp(QMainWindow):
         logging.debug(f"Range preference saved: {range_type}")
 
     # Scheduler controls
-    def on_scheduler_toggled(self, enabled):
+    def on_scheduler_toggled(self):
         """Handle scheduler enable/disable"""
-        logging.info(f"Scheduler toggled: {enabled}")
+        isEnable = self.ui.enabledCheck.isChecked()
+        self.config.set_scheduler_enabled(isEnable)
+
+        logging.info(f"Scheduler toggled: {isEnable}")
         # Update UI visibility
         self._update_scheduler_ui_state()
         
-        if enabled:
+        if isEnable:
             if not self.scheduler.source:
                 self.scheduler.source = str(COLLECTION_DIR)
                 self._set_status("Scheduler enabled - using entire collection")
@@ -1078,12 +1056,14 @@ class TapeciarniaApp(QMainWindow):
         self.ui.resetButton.setText(f"  {self.lang['settings']['resetButton']}")
 
     def set_buttons(self,enabled: bool):
+        logging.warning(f"Toggleing buttons: {enabled}")
         self.ui.randomButton.setDisabled(not enabled)
         self.ui.randomAnimButton.setDisabled(not enabled)
+        self.ui.browseButton.setDisabled(not enabled)
         self.ui.loadUrlButton.setDisabled(not enabled)
-        self.ui.logInBnt.setEnabled(not enabled)
-        self.ui.resetButton.setEnabled(not enabled)
-        self.ui.startButton.setEnabled(not enabled)
+        self.ui.logInBnt.setDisabled(not enabled)
+        self.ui.resetButton.setDisabled(not enabled)
+        self.ui.startButton.setDisabled(not enabled)
 
 
     def _apply_input_string(self, text: str):
@@ -1455,12 +1435,12 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, "urlInput"):
             self.ui.urlInput.setText(text)
 
-    def _update_source_buttons_active(self, active_source):
+    def _update_source_buttons_active(self, active_source="added"):
         """Update source button styles"""
         logging.debug(f"Updating source button styles for: {active_source}")
         sources = {
-            # "super": getattr(self.ui, "super_wallpaper_btn", None),
-            # "favorites": getattr(self.ui, "fvrt_wallpapers_btn", None),
+            "super": getattr(self.ui, "super_wallpaper_btn", None),
+            "favorites": getattr(self.ui, "fvrt_wallpapers_btn", None),
             "added": getattr(self.ui, "added_wallpaper_btn", None)
         }
         
@@ -1573,10 +1553,7 @@ class TapeciarniaApp(QMainWindow):
         """
         logging.info(f"Online download completed: {file_path}")
         self._update_shuffle_button_states(None)
-        self.ui.randomButton.setDisabled(False)
-        self.ui.randomAnimButton.setDisabled(False)
-        self.ui.loadUrlButton.setDisabled(False)
-        
+        self.set_buttons(True)        
         # Close progress dialog
         
         # Validate downloaded file
@@ -1595,13 +1572,6 @@ class TapeciarniaApp(QMainWindow):
             self._apply_wallpaper_from_path(Path(file_path))
             self._set_status(f"Online {'animated' if is_animated else 'static'} wallpaper set")
             
-            # Show success message
-            # QMessageBox.information(
-            #     self,
-            #     "Online Wallpaper Set",
-            #     f"Successfully set online {'animated' if is_animated else 'static'} wallpaper!",
-            #     QMessageBox.StandardButton.Ok
-            # )
             
             logging.info("Online wallpaper set successfully")
             
@@ -1620,10 +1590,14 @@ class TapeciarniaApp(QMainWindow):
         is_animated = "animated" in error_msg.lower() or "video" in error_msg.lower()
         self._fallback_to_local_shuffle(is_animated)
 
-    def _fallback_to_local_shuffle(self, is_animated: bool):
+    def _fallback_to_local_shuffle(self, is_animated: bool,fallback_reason:str=None):
+
         """
         Fallback to local shuffle when online fails
         """
+        if fallback_reason:
+            logging.warning(fallback_reason)
+
         logging.warning(f"Falling back to local shuffle for {'animated' if is_animated else 'static'}")
         
         # Show warning message
@@ -1665,9 +1639,7 @@ class TapeciarniaApp(QMainWindow):
         self._update_shuffle_button_states(None)
 
         # enable the buttons
-        self.ui.randomButton.setDisabled(False)
-        self.ui.randomAnimButton.setDisabled(False)
-        self.ui.loadUrlButton.setDisabled(False)
+        self.set_buttons(True)
 
 
     def _perform_local_static_shuffle(self):
@@ -1695,9 +1667,7 @@ class TapeciarniaApp(QMainWindow):
         self._update_shuffle_button_states(None)
 
         # enable the buttons
-        self.ui.randomButton.setDisabled(False)
-        self.ui.randomAnimButton.setDisabled(False)
-        self.ui.loadUrlButton.setDisabled(False)
+        self.set_buttons(True)
 
 
     def _on_download_error(self, error_msg: str):
@@ -1724,17 +1694,20 @@ class TapeciarniaApp(QMainWindow):
         logging.info(f"Loaded range preference: {self.current_range}")
 
         # Load scheduler settings
-        source, interval, enabled = self.config.get_scheduler_settings()
+        enabled ,source, interval, range_type = self.config.get_scheduler_settings()
+        enabled = self.config.get_scheduler_enabled()
+        self.ui.enabledCheck.setChecked(enabled)
+
         self.scheduler.source = source
         self.scheduler.interval_minutes = interval
-        
+        self.scheduler.range_type = range_type
         if hasattr(self.ui, "interval_spinBox"):
             self.ui.interval_spinBox.setValue(interval)
-        
-        if hasattr(self.ui, "enabledCheck"):
-            self.ui.enabledCheck.setChecked(enabled)
-            if enabled and source:
-                self.scheduler.start(self.scheduler.source, interval)
+
+        # if hasattr(self.ui, "enabledCheck"):
+        #     self.ui.enabledCheck.setChecked(True)
+
+        self._update_source_buttons_active("added")
         
         logging.info(f"Loaded scheduler settings - source: {source}, interval: {interval}, enabled: {enabled}")
         
