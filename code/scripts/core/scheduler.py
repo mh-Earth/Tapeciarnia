@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from threading import Thread, Event
 from typing import Optional, Callable
-
+from utils.singletons import get_config
 from utils.path_utils import COLLECTION_DIR, FAVS_DIR,SAVES_DIR
 
 
@@ -20,7 +20,9 @@ class WallpaperScheduler:
         self.stop_event = Event()
         self.change_callback: Optional[Callable] = None
         self.last_wallpaper = None
+        self.config = get_config()
         logging.info("WallpaperScheduler initialized successfully")
+
 
     def set_change_callback(self, callback: Callable):
         """Set callback for when wallpaper should change"""
@@ -107,6 +109,7 @@ class WallpaperScheduler:
                             logging.info(f"Selected new wallpaper: {wallpaper.name}")
                             self.last_wallpaper = wallpaper
                             self.change_callback(wallpaper)
+                            self.config.set_last_video(wallpaper)
                             logging.debug("Change callback executed successfully")
                         else:
                             logging.info("Skipping same wallpaper selection, waiting for next interval")
@@ -127,6 +130,10 @@ class WallpaperScheduler:
         
         if files:
             selected = random.choice(files)
+            if  len(files) > 1 and selected == self.last_wallpaper:
+                logging.debug("Scheduler: Same wallpaper seleted as before. Trying again!!")
+                return self._get_random_wallpaper()
+
             logging.debug(f"Randomly selected wallpaper: {selected.name} from {len(files)} options")
             return selected
         else:
@@ -156,13 +163,13 @@ class WallpaperScheduler:
         
         # Define extensions based on range type
         if self.range_type == "mp4":
-            extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
+            extensions = self.config.get_valid_video_extensions()
             range_desc = "videos only"
         elif self.range_type == "wallpaper":
-            extensions = ('.jpg', '.jpeg', '.png')
+            extensions = self.config.get_valid_image_extensions()
             range_desc = "images only"
         else:  # "all"
-            extensions = ('.jpg', '.jpeg', '.png', '.mp4')
+            extensions = self.config.get_all_valid_extensions()
             range_desc = "all media types"
         
         logging.debug(f"File extensions for {range_desc}: {extensions}")

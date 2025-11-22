@@ -706,7 +706,7 @@ class Ui_MainWindow(object):
         self.range_mp4_bnt.setText(QCoreApplication.translate("MainWindow", u"  Mp4", None))
         self.range_mp4_bnt.setProperty(u"class", QCoreApplication.translate("MainWindow", u"ghost", None))
         self.range_mp4_bnt.setProperty(u"icon_name", QCoreApplication.translate("MainWindow", u"film", None))
-        self.statusLabel.setText(QCoreApplication.translate("MainWindow", u"Status: min ,Status: min ,Status: min ,Status: min", None))
+        self.statusLabel.setText(QCoreApplication.translate("MainWindow", u"Running...j", None))
         self.startButton.setText(QCoreApplication.translate("MainWindow", u"Start", None))
         self.startButton.setProperty(u"class", QCoreApplication.translate("MainWindow", u"ghost", None))
         self.resetButton.setText(QCoreApplication.translate("MainWindow", u"Reset", None))
