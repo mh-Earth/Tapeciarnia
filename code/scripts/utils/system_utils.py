@@ -8,14 +8,10 @@ from pathlib import Path
 from typing import Optional
 import socket
 import os
-import requests
 import logging
-import json
 from PySide6.QtWidgets import QApplication
 from PIL import Image
 
-# logging = logging.getlogging()
-# logging.setLevel(logging.ERROR)
 
 
 def isBundle() -> bool:
@@ -387,110 +383,8 @@ def get_primary_screen_dimensions() -> tuple[int, int]:
 
 
 
-def fetch_shuffled_wallpaper(width: int, height: int, is_animated: bool = False,lang:str="pl") -> str | None:
-    """
-    Fetches a shuffled wallpaper download URL from the server using a POST request.
-
-    Args:
-        width (int): Device width in pixels.
-        height (int): Device height in pixels.
-        is_animated (bool): True for animated wallpapers (all_mp4), False for static (all).
-
-    Returns:
-        str | None: The wallpaper download URL if successful, otherwise None.
-    """
-    BASE_URL = "https://tapeciarnia.pl/program/wybierz_tapete_2025.php"
-    # 1. Determine the 'pokaz' parameter based on the type of wallpaper
-    pokaz_value = "all_mp4" if is_animated else "all"
-    
-    # 2. Construct the full URL with GET parameters (pokaz, x, y)
-    # Note: Although the user wants POST for variables, the base structure
-    # of the URL provided already includes these as GET parameters. 
-    # We will send the data in the POST body for robustness, but structure the URL 
-    # as provided by the user's example.
-    url = f"{BASE_URL}?pokaz={pokaz_value}&x={width}&y={height}"
-
-    # 3. Define the data to be sent via POST (optional, but good practice)
-    # Since the user explicitly mentioned sending variables via POST, we can
-    # place the critical data (or redundancy) in the body.
-    post_data = {
-        'x': width,
-        'y': height,
-        'pokaz': pokaz_value,
-        'lang': lang
-    }
-
-    logging.info(f"Requesting shuffle URL. Animated: {is_animated}. Dims: {width}x{height}")
-    logging.debug(f"API URL: {url}")
-    logging.debug(f"POST Data: {post_data}")
-
-    try:
-        # 4. Make the POST request
-        response = requests.post(
-            url, 
-            data=post_data,
-            timeout=10 # Set a reasonable timeout
-        )
-        
-        # Raise an exception for bad status codes (4xx or 5xx)
-        response.raise_for_status() 
-
-        # 5. Check the Content Type and attempt JSON parsing
-        if 'application/json' in response.headers.get('Content-Type', ''):
-            data = response.json()
-            
-            # Assuming the JSON response structure contains a key like 'url' or 'download_link'
-            # Adjust the key 'url' based on the actual response structure from the API
-            download_url:str = data.get('url') 
-            
-
-            if not is_animated:
-                if data.get("type") == "img":
-                    return download_url
-                else:
-                    return fetch_shuffled_wallpaper(width=width,height=height,is_animated=is_animated,lang=lang)
-
-            elif data.get("type") == "mp4":
-                logging.info(f"Successfully fetched shuffle URL: {download_url}")
-                return download_url
-            
-            else:
-                logging.error(f"JSON response is missing the 'url' key. Full response: {data}")
-                return None
-        else:
-            logging.error(f"API response was not JSON. Status: {response.status_code}. Content Type: {response.headers.get('Content-Type')}")
-            return None
-
-    except requests.exceptions.Timeout:
-        logging.error("API request timed out (10 seconds).")
-        return None
-    except requests.exceptions.ConnectionError:
-        logging.error("API connection error. Check internet connection and firewall.")
-        return None
-    except requests.exceptions.HTTPError as e:
-        logging.error(f"HTTP error occurred: {e}. Status: {response.status_code}")
-        return None
-    except json.JSONDecodeError:
-        logging.error("Failed to decode JSON response from the server.")
-        return None
-    except Exception as e:
-        logging.critical(f"An unexpected error occurred during API call: {e}")
-        return None
-
 def gen_name_from_url(url:str) -> str:
     return url.split("/")[-1]
 
 
 
-# --- Example of How to Use ---
-if __name__ == '__main__':
-    # Static Wallpaper Shuffle
-    static_url = gen_name_from_url(fetch_shuffled_wallpaper(1920, 1080, is_animated=False))
-    print(f"Static Shuffle URL: {static_url}")
-
-    # Animated Wallpaper Shuffle
-    animated_url = fetch_shuffled_wallpaper(1920, 1080, is_animated=True)
-    print(f"Animated Shuffle URL: {animated_url}")
-
-# Log module initialization
-# logging.debug("System utilities module initialized")

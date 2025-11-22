@@ -1,0 +1,35 @@
+<RCC>
+  <qresource prefix="icons">
+    <file>icons/icon.ico</file>
+    <file>icons/check.png</file>
+    <file>icons/circle_plus.png</file>
+    <file>icons/circle_plus_blue.png</file>
+    <file>icons/film.png</file>
+    <file>icons/film_blue.png</file>
+    <file>icons/heart.png</file>
+    <file>icons/heart_blue.png</file>
+    <file>icons/image.png</file>
+    <file>icons/image_blue.png</file>
+    <file>icons/images.png</file>
+    <file>icons/images_blue.png</file>
+    <file>icons/languages.png</file>
+    <file>icons/languages_blue.png</file>
+    <file>icons/link.png</file>
+    <file>icons/link_blue.png</file>
+    <file>icons/log-in.png</file>
+    <file>icons/log-in_blue.png</file>
+    <file>icons/logo_biale.svg</file>
+    <file>icons/settings.png</file>
+    <file>icons/settings_blue.png</file>
+    <file>icons/shuffle.png</file>
+    <file>icons/shuffle_blue.png</file>
+    <file>icons/sparkles.png</file>
+    <file>icons/sparkles_blue.png</file>
+    <file>icons/timer.png</file>
+    <file>icons/timer_blue.png</file>
+    <file>icons/upload.png</file>
+    <file>icons/upload_blue.png</file>
+    <file>icons/wallpaper.png</file>
+    <file>icons/wallpaper_blue.png</file>
+  </qresource>
+</RCC>

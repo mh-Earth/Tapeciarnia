@@ -44,7 +44,7 @@ from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, fetch_shuffled_wallpaper, resource_path
+from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
@@ -191,9 +191,9 @@ class TapeciarniaApp(QMainWindow):
         self.current_shuffle_type = 'animated'
 
         # Update button states
+        self._set_status("Fetching online animated wallpaper...")
         self._update_shuffle_button_states('animated')
         self.set_buttons(False)
-        self._set_status("Fetching online animated wallpaper...")
         
         
 
@@ -214,9 +214,9 @@ class TapeciarniaApp(QMainWindow):
         self.current_shuffle_type = 'wallpaper'
         
         # Update button states
+        self._set_status("Fetching online wallpaper...")
         self._update_shuffle_button_states('wallpaper')
         self.set_buttons(False)
-        self._set_status("Fetching online wallpaper...")
         
 
         # Try to fetch online wallpaper
@@ -1056,7 +1056,7 @@ class TapeciarniaApp(QMainWindow):
         self.ui.resetButton.setText(f"  {self.lang['settings']['resetButton']}")
 
     def set_buttons(self,enabled: bool):
-        logging.warning(f"Toggleing buttons: {enabled}")
+        logging.info(f"Toggleing buttons: {enabled}")
         self.ui.randomButton.setDisabled(not enabled)
         self.ui.randomAnimButton.setDisabled(not enabled)
         self.ui.browseButton.setDisabled(not enabled)
@@ -1064,6 +1064,7 @@ class TapeciarniaApp(QMainWindow):
         self.ui.logInBnt.setDisabled(not enabled)
         self.ui.resetButton.setDisabled(not enabled)
         self.ui.startButton.setDisabled(not enabled)
+        self.ui.urlInput.clearFocus()
 
 
     def _apply_input_string(self, text: str):
