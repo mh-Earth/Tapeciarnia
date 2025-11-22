@@ -1,4 +1,4 @@
-# Tapeciarnia - Dynamic Wallpaper App
+<!-- # Tapeciarnia - Dynamic Wallpaper App
 
 A cross-platform application for setting dynamic video and image wallpapers with an organized collection system.
 
@@ -6,7 +6,6 @@ A cross-platform application for setting dynamic video and image wallpapers with
 - Set video wallpapers (MP4, MKV, WebM, AVI, MOV)
 - Set image wallpapers (JPG, PNG, BMP, GIF)
 - Drag & drop support for local files
-- YouTube video downloading with progress tracking
 - Scheduled wallpaper rotation with customizable intervals
 - Organized collection management (Videos, Images, Favorites)
 - Cross-platform wallpaper engine (Weepe for Windows, mpv for Linux)
@@ -24,8 +23,8 @@ A cross-platform application for setting dynamic video and image wallpapers with
 ### Quick Setup
 1. Clone the repository:
 bash
-git clone https://github.com/Ernest-Macharia/Tepeciarnia.git
-cd Tepeciarnia
+git clone https://github.com/mh-Earth/Tapeciarnia.git
+cd Tepeciarnia  
 Create and activate virtual environment:
 
 bash
@@ -115,8 +114,8 @@ The app automatically organizes your wallpapers:
 
 text
 Pictures/Tapeciarnia/
-├── Videos/           # Downloaded and added video wallpapers
-├── Images/           # Downloaded and added image wallpapers
+├── Saves/           # Downloaded and added video and image wallpapers
+
 └── Favorites/        # Your favorite wallpapers (both types)
 Windows Specific Setup
 For optimal Windows performance:
@@ -131,8 +130,6 @@ Troubleshooting
 Common Issues
 Videos play in fullscreen instead of wallpaper: Ensure Weepe (Windows) or mpv+xwinwrap (Linux) is properly installed
 
-Download fails: Check internet connection and verify yt-dlp is installed (pip install yt-dlp)
-
 Wallpaper doesn't apply: Verify file permissions and supported formats
 
 Scheduler not working: Check if the source folder contains valid media files
@@ -141,5 +138,4 @@ Supported Formats
 Video: MP4, MKV, WebM, AVI, MOV
 
 Image: JPG, JPEG, PNG, BMP, GIF
-
-URLs: YouTube, direct video/image links
+ -->
