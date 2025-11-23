@@ -834,8 +834,8 @@ class TapeciarniaApp(QMainWindow):
     def _get_source_display_name(self, source):
         """Get display name for source"""
         source_names = {
-            str(FAVS_DIR): "Favorite Wallpapers",
-            str(COLLECTION_DIR): "My Collection",
+            str(FAVS_DIR): self.lang['settings']['favoriteWallpapersButton'],
+            str(SAVES_DIR): self.lang['settings']['myCollectionButton'],
             "super": "Super Wallpaper"
         }
         return source_names.get(source, "Custom Source")
@@ -843,7 +843,7 @@ class TapeciarniaApp(QMainWindow):
     def on_browse_clicked(self):
         """Browse web for wallpapers"""
         logging.info("Browse button clicked")
-        webbrowser.open_new_tab("https://www.tapeciarnia.pl/")
+        webbrowser.open_new_tab("https://www.tapeciarnia.pl")
         logging.debug("Opening tapeciarnia")
 
     def _handle_browsed_file(self, file_path: str):

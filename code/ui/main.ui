@@ -1462,7 +1462,7 @@ QCheckBox::indicator:disabled {
              </font>
             </property>
             <property name="text">
-             <string>Status: min ,Status: min ,Status: min ,Status: min</string>
+             <string>Running</string>
             </property>
            </widget>
           </item>
