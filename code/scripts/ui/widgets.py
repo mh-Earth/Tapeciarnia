@@ -6,6 +6,7 @@ from PySide6.QtGui import  QPixmap,QCursor
 from PySide6.QtCore import Qt, QTimer
 
 from utils.path_utils import SAVES_DIR
+from utils.singletons import get_config
 import logging
 from pathlib import Path
 import os
@@ -66,6 +67,7 @@ class EnhancedDragDropWidget(QWidget):
         self.parent_app = parent
         self.setup_ui()
         self.update_language()
+        self.config = get_config()
     
     # Function for toggling visibility of buttons and upload icon
     def toggle_buttons_visibility(self, visible: bool):
@@ -260,6 +262,11 @@ class EnhancedDragDropWidget(QWidget):
                     self.previous_wallpaper = self.get_current_wallpaper()
                     logging.info(f"Stored original wallpaper: {self.previous_wallpaper}")
                 
+                # stop scheduler if running
+                if self.parent_app.scheduler.is_active():
+                    self.parent_app._stop_scheduler()
+                
+
                 # Update URL input field
                 if hasattr(self.parent_app, 'ui') and hasattr(self.parent_app.ui, 'urlInput'):
                     self.parent_app.ui.urlInput.setText(self.destination_path)
@@ -308,7 +315,7 @@ class EnhancedDragDropWidget(QWidget):
     
     def is_video_file(self, file_path):
         """Check if file is a video"""
-        video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
+        video_extensions = tuple(self.config.get_valid_video_extensions())
         return file_path.lower().endswith(video_extensions)
 
     def restore_original_wallpaper(self):
@@ -355,12 +362,7 @@ class EnhancedDragDropWidget(QWidget):
     
     def is_valid_wallpaper_file(self, file_path):
         """Check if file is a valid wallpaper type with comprehensive validation"""
-        valid_extensions = (
-            # Images
-            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff',
-            # Videos  
-            '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv', '.m4v'
-        )
+        valid_extensions = self.config.get_all_valid_extensions()
 
         if not file_path or not isinstance(file_path, str):
             logging.debug(f"Invalid file path: {file_path}")

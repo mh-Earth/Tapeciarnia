@@ -31,6 +31,13 @@ QSpacer {
   background-color: red; 
 }*/
 
+QPushButton:focus {
+    outline: none;
+    border: none;
+}
+
+
+
 QFrame#uploadArea:hover {
   background: rgba(255, 255, 255, 0.04);
 }

@@ -10,7 +10,8 @@ import socket
 import os
 import logging
 from PySide6.QtWidgets import QApplication
-from PIL import Image
+import tempfile
+from utils.path_utils import FAVS_DIR
 
 
 
@@ -248,6 +249,22 @@ def set_static_desktop_wallpaper(path: str) -> bool:
     except Exception as e:
         logging.error("Unexpected wallpaper error: %s", e, exc_info=True)
         return False
+    
+def conver_bytes_to_tmp_path(img_bytes: bytes, filename: str = "current_wallpaper.jpg") -> bool:
+    """
+    Save image bytes to a temporary file and return it's path.
+    """
+
+    # Create temporary file
+    path = FAVS_DIR / filename
+
+    # Save image
+    with open(path, "wb") as f:
+        f.write(img_bytes)
+
+
+    return path
+
 
 def get_system_info() -> dict:
     """

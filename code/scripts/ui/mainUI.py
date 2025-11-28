@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
     QHBoxLayout, QLabel, QLayout, QLineEdit,
     QMainWindow, QPushButton, QSizePolicy, QSpacerItem,
     QSpinBox, QVBoxLayout, QWidget)
+import icons_resource_rc
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -69,10 +70,17 @@ class Ui_MainWindow(object):
         self.loginLayout = QHBoxLayout()
         self.loginLayout.setSpacing(9)
         self.loginLayout.setObjectName(u"loginLayout")
-        self.emailInput = QLineEdit(self.card)
-        self.emailInput.setObjectName(u"emailInput")
+        self.user_name_label = QLabel(self.card)
+        self.user_name_label.setObjectName(u"user_name_label")
         font = QFont()
         font.setPointSize(11)
+        self.user_name_label.setFont(font)
+        self.user_name_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        self.loginLayout.addWidget(self.user_name_label)
+
+        self.emailInput = QLineEdit(self.card)
+        self.emailInput.setObjectName(u"emailInput")
         self.emailInput.setFont(font)
 
         self.loginLayout.addWidget(self.emailInput)
@@ -640,6 +648,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Tapeciarnia", None))
         self.logoLabel.setText("")
+        self.user_name_label.setText(QCoreApplication.translate("MainWindow", u"Gmail_username", None))
         self.emailInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"email", None))
         self.passwordInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"password", None))
 #if QT_CONFIG(tooltip)
@@ -647,11 +656,6 @@ class Ui_MainWindow(object):
 #endif // QT_CONFIG(tooltip)
         self.logInBnt.setText(QCoreApplication.translate("MainWindow", u"Log In", None))
         self.logInBnt.setProperty(u"class", QCoreApplication.translate("MainWindow", u"primary", None))
-        self.language_icon.setText("")
-        self.langCombo.setItemText(0, QCoreApplication.translate("MainWindow", u"EN", None))
-        self.langCombo.setItemText(1, QCoreApplication.translate("MainWindow", u"PL", None))
-        self.langCombo.setItemText(2, QCoreApplication.translate("MainWindow", u"DE", None))
-
         self.randomAnimButton.setText(QCoreApplication.translate("MainWindow", u"  Shuffle animated", None))
         self.randomAnimButton.setProperty(u"class", QCoreApplication.translate("MainWindow", u"ghost", None))
         self.randomAnimButton.setProperty(u"icon_name", QCoreApplication.translate("MainWindow", u"shuffle", None))

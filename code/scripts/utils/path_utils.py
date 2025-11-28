@@ -102,7 +102,7 @@ def open_folder_in_explorer(folder_path: Path):
 def get_folder_for_source(source_type: str) -> Path:
     """Get the corresponding folder path for a source type"""
     folder_map = {
-        "favorites": FAVS_DIR,
+        "frvt": FAVS_DIR,
         "added": SAVES_DIR,
         "super": SAVES_DIR,  # Fallback for super wallpaper
         "all": SAVES_DIR,

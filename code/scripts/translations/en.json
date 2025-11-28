@@ -1,4 +1,5 @@
-{"en": {
+{
+    "en": {
         "appName": "Tapeciaarnia",
         "auth": {
             "emailPlaceholder": "email",
@@ -15,16 +16,21 @@
             "dragDropInstruction": "Drag & drop a photo or video here, or click to choose a file",
             "supportedFormatsHint": "Supported: JPG, PNG, MP4",
             "imagesOrVideoURLHeader": "Images or Video URL",
-            "loadButton": "Load"
+            "loadButton": "Load",
+            "urlHelperText": "Paete a dirick link to a .jpg/.png or mp4 file",
+            "setAsWallpaperButton": "Set as Wallpaper",
+            "selected_text": "Selected",
+            "addToCollectionButton": "Add to Collection",
+            "addToFavoritesButton": "Add to Favorites"
         },
         "settings": {
             "autoChangeHeader": "Automatic wallpaper change",
             "enabledLabel": "Enabled",
             "intervalLabel": "Interval (minutes)",
             "wallpaperSourceLabel": "Wallpaper source",
-            "superWallpaperSource": "Super Wallpaper",
-            "favoriteWallpapersSource": "Favorite Wallpapers",
-            "myCollectionSource": "My Collection",
+            "superWallpaperButton": "Super Wallpaper",
+            "favoriteWallpapersButton": "Favorite Wallpapers",
+            "myCollectionButton": "My Collection",
             "rangeHeader": "Range",
             "rangeAllButton": "All",
             "rangeWallpaperButton": "Wallpaper",
@@ -32,6 +38,82 @@
             "schedulerStoppedStatus": "Scheduler stopped",
             "startButton": "Start",
             "resetButton": "Reset"
+        },
+        "dialog": {
+            "info": {
+                "super_wallpaper_title": "Super Wallpaper",
+                "super_wallpaper_message": "Super Wallpaper feature - Premium curated wallpapers coming soon!",
+                "no_login_fvrt_title": "Favorites",
+                "no_login_fvrt_message": "Please login to access your favorite wallpapers",
+                "collection_empty_title": "Empty Collection",
+                "collection_empty_message": "No wallpapers found in your collection. Download or add some wallpapers first.",
+                "no_video_found_in_local_title": "No Videos",
+                "no_video_found_in_local_message": "No animated wallpapers found in your local collection.",
+                "no_image_found_in_local_title": "No Images",
+                "no_image_found_in_local_message": "No Wallpapers found in your local collection.",
+                "invalide_login_info_title": "Invalid credential",
+                "invalide_login_info_message": "Please enter valid credentials",
+                "login_successfull_title": "Log in successfull",
+                "login_successfull_message": "Welcome back",
+                "login_failed_title": "Login Failed",
+                "login_failed_message": "Failed to login",
+                "reset_success_title": "Reset Successful",
+                "reset_success_message": "All wallpapers have been stopped and settings have been reset to default.\n\nYour original wallpaper has been restored.",
+                "icon_tray_title": "Tapeciarnia is still running",
+                "icon_tray_message": "Tapeciarnia is minimized to the system tray. Right-click the tray icon to restore or exit."
+            },
+            "qustions": {
+                "confirm_reset_title": "Confirm Reset",
+                "confirm_reset_dia": "Are you sure you want to reset?\n\nThis will stop all current wallpapers and restore the original wallpaper.",
+                "confirm_exit_title": "Confirm Exit",
+                "confirm_exit_dialog": "Are you sure you want to exit Tapeciarnia?\n\nThis will stop all wallpapers and background processes.",
+                "confirm_wallpaper_change_title": "Confirm Wallpaper Change",
+                "confirm_wallpaper_change_message": "Do you want to set the wallpaper from this URI?"
+            },
+            "warning": {
+                "file_not_found_title": "Folder Not Found",
+                "file_not_found_message": "The favorites folder does not exist",
+                "file_open_failed_title": "Open Failed",
+                "file_open_failed_message": "Could not open folder in file explorer:",
+                "empty_url_field_title": "Error",
+                "empty_url_field_message": "No URL/path provided for apply",
+                "no_wallpaper_found_for_scheduler_title": "No Wallpapers Found",
+                "no_wallpaper_found_for_scheduler_messges": {
+                    "no_mp4": "No videos found in your collection!\n\nPlease download or add some videos first.",
+                    "no_wallpapers": "No images found in your collection!\n\nPlease download or add some images first.",
+                    "all": "No wallpapers found in your collection!\n\nPlease download or add some wallpapers first."
+                },
+                "file_not_exist_title": "Error",
+                "file_not_exist_message": "Selected file does not exist.",
+                "invalid_path_title": "Warning",
+                "invalid_path_message": "Please enter a valid URL or file path.",
+                "unsupported_url_title": "Unsupported URL",
+                "unsupported_url_message": "The URL doesn't appear to be a supported image or video.",
+                "unsupported_file_title": "Unsupported file",
+                "unsupported_file_message": "Unsupported local file type.",
+                "offile_shuffle_title": "Online Unavailable",
+                "offile_shuffle_message": "Could not fetch online wallpaper. Using local collection instead."
+            },
+            "critical": {
+                "sytsem_tray_unavailable_title": "System Tray",
+                "sytsem_tray_unavailable_message": "System tray is not available on this system.",
+                "failed_uri_title": "Error",
+                "failed_uri_message": "Failed to apply wallpaper:",
+                "image_download_failed": "Error",
+                "image_download_failed_message": "Image download setup failed:",
+                "video_download_failed": "Error",
+                "video_download_failed_message": "Video download setup failed:",
+                "file_error_title": "File Error",
+                "file_error_message": "The file is no longer available. Operation cancelled.",
+                "failed_to_play_video_title": "Error",
+                "failed_to_play_video_message": "Failed to play video:",
+                "failed_to_apply_image_title": "Error",
+                "failed_to_apply_image_message": "Failed to apply image:",
+                "download_error_title": "Error"
+            }
+        },
+        "status": {
+            "genarel": {}
         }
     }
 }

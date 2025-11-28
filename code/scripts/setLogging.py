@@ -28,7 +28,7 @@ class InitLogging:
 
         else:
             LOGGING_MODE = "both"
-            logger.setLevel(logging.INFO)
+            logger.setLevel(logging.DEBUG)
 
         # Clear old handlers (avoid duplicate logging)
         if logger.hasHandlers():

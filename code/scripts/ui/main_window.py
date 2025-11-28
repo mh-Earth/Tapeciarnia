@@ -38,13 +38,13 @@ except ImportError as e:
 # Import core modules
 from core.wallpaper_controller import WallpaperController
 from core.download_manager import DirectDownloadThread,ImageDownloadThread
-from core.scheduler import WallpaperScheduler
-from  core.language_controller import LanguageController
+from core.scheduler import UnifiedWallpaperScheduler
+from core.language_controller import LanguageController
 from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path
+from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
@@ -68,9 +68,9 @@ class TapeciarniaApp(QMainWindow):
         # Initialize controllers
         logging.debug("Initializing controllers")
         self.controller = WallpaperController()
-        self.scheduler = WallpaperScheduler()
+        self.scheduler = UnifiedWallpaperScheduler()
         self.language_controller = LanguageController()
-        self.scheduler.set_change_callback(self._apply_wallpaper_from_path)
+        self.scheduler.set_change_callback(self._apply_wallpaper_from_scheduler)
         self.config = get_config()
 
         self._set_lang()
@@ -87,13 +87,18 @@ class TapeciarniaApp(QMainWindow):
         self.last_wallpaper_path = None
         self.current_shuffle_mode = None
         self.isLogin:bool = False # temporary
+        self.user_name:str|None = None
+        # scheduler
+        self.scheduler.set_api_url(f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user=gmail&pokaz=ulubione_tap&x={self.x}&y={self.y}&hd=1")
+        self.scheduler.status_callback = self._set_status
+        
+
 
 
         # Enhanced drag & drop
         self.drag_drop_widget = EnhancedDragDropWidget(self)
 
         # State
-        self.current_range = "all"
         self.previous_wallpaper = get_current_desktop_wallpaper()
         self.is_minimized_to_tray = False
 
@@ -107,6 +112,9 @@ class TapeciarniaApp(QMainWindow):
         logging.info("TapeciarniaApp initialization completed successfully")
 
     def _setLogInState(self):
+        '''
+        Hide email and password imput area. And toggle text on LohInBnt
+        '''
         if self.isLogin:
             self.ui.emailInput.hide()
             self.ui.passwordInput.hide()
@@ -195,6 +203,9 @@ class TapeciarniaApp(QMainWindow):
         self._update_shuffle_button_states('animated')
         self.set_buttons(False)
         
+        # stopping scheduler
+        if self.scheduler.is_active():
+            self._stop_scheduler()
         
 
         # Try to fetch online wallpaper
@@ -217,13 +228,17 @@ class TapeciarniaApp(QMainWindow):
         self._set_status("Fetching online wallpaper...")
         self._update_shuffle_button_states('wallpaper')
         self.set_buttons(False)
+
+        # stopping scheduler
+        if self.scheduler.is_active():
+            self._stop_scheduler()
         
 
         # Try to fetch online wallpaper
         animated = False
         fetch_online_url = Shuffler(animated=animated)
         fetch_online_url.success.connect(lambda e: self.download_and_set_online_wallpaper(e,is_animated=animated))
-        fetch_online_url.failed.connect(lambda e: self._fallback_to_local_shuffle(e,is_animated=animated,fallback_reason=e))
+        fetch_online_url.failed.connect(lambda e: self._fallback_to_local_shuffle(is_animated=animated,fallback_reason=e))
         fetch_online_url.run()
 
 
@@ -231,7 +246,7 @@ class TapeciarniaApp(QMainWindow):
         """Reset to default wallpaper WITHOUT confirmation but WITH success message"""
         logging.info("Performing reset without confirmation")
         self.controller.stop()
-        self.scheduler.stop()
+        self._stop_scheduler()
         self.set_buttons(True)
         # Reset enhanced state
         self.current_wallpaper_type = None
@@ -310,8 +325,8 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Close event triggered")
         reply = QMessageBox.question(
             self,
-            "Confirm Exit",
-            "Are you sure you want to exit Tapeciarnia?\n\nThis will stop all wallpapers and background processes.",
+            self.lang['dialog']['confirm_exit_title'],
+            self.lang['dialog']['confirm_exit_dialog'],
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -347,7 +362,7 @@ class TapeciarniaApp(QMainWindow):
             
             # Step 2: Stop scheduler (50%)
             self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
-            self.scheduler.stop()
+            self._stop_scheduler()
             QApplication.processEvents()
             
             # Step 3: Cleanup resources (75%)
@@ -427,7 +442,7 @@ class TapeciarniaApp(QMainWindow):
             
             # Step 2: Stop scheduler (50%)
             self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
-            self.scheduler.stop()
+            self._stop_scheduler()
             QApplication.processEvents()
             
             # Step 3: Cleanup (75%)
@@ -544,10 +559,14 @@ class TapeciarniaApp(QMainWindow):
             if not self.ui.uploadArea.layout():
                 existing_layout = QVBoxLayout(self.ui.uploadArea)
             
+
             # Add our enhanced widget
             existing_layout.addWidget(self.drag_drop_widget)
             logging.debug("Enhanced drag drop widget added to upload area")
         
+        if hasattr(self.ui, "user_name_label"):
+            self.ui.user_name_label.setVisible(False)
+            self.ui.user_name_label.mousePressEvent = self._handel_mouse_press_username
         
         # Connect signals
         self._bind_ui_controls()
@@ -572,7 +591,7 @@ class TapeciarniaApp(QMainWindow):
         else:
             logging.warning(f"Folder does not exist: {folder_path}")
             QMessageBox.warning(self, "Folder Not Found", 
-                            f"The {source_type} folder does not exist:\n{folder_path}")
+                            f"The {source_type} folder does not exist:\n{folder_path}") #
 
     def on_range_double_clicked(self, range_type):
         """Handle double-click on range buttons to open corresponding folder"""
@@ -590,7 +609,7 @@ class TapeciarniaApp(QMainWindow):
         else:
             logging.warning(f"Folder does not exist: {folder_path}")
             QMessageBox.warning(self, "Folder Not Found", 
-                            f"The {range_type} folder does not exist:\n{folder_path}")
+                            f"The {range_type} folder does not exist:\n{folder_path}") #
 
     def _bind_ui_controls(self):
         """Bind UI controls to their handlers"""
@@ -675,6 +694,9 @@ class TapeciarniaApp(QMainWindow):
 
         if hasattr(self.ui, "logInBnt"):
             self.ui.logInBnt.clicked.connect(self.on_login_clicked)
+            self.ui.emailInput.returnPressed.connect(self.on_login_clicked)
+            self.ui.passwordInput.returnPressed.connect(self.on_login_clicked)
+
             logging.debug("Login button connected")
 
         logging.debug("All UI controls bound successfully")
@@ -685,6 +707,7 @@ class TapeciarniaApp(QMainWindow):
         enabled = self.config.get_scheduler_enabled()
 
         logging.debug(f"Updating scheduler UI state: enabled={enabled}")
+        logging.info(f"Toggling scheduler visibility: {enabled}")
         
         # Show/hide interval and range controls
         if hasattr(self.ui, "source_n_interval_frame"):
@@ -726,110 +749,136 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Apply/Load button clicked")
         if not hasattr(self.ui, "urlInput"):
             logging.error("No URL input field available in UI")
-            QMessageBox.warning(self, "Error", "No input field available in UI")
+            # QMessageBox.warning(self, "Error", "No input field available in UI")
             return
         
         url = self.ui.urlInput.text().strip()
         if not url:
             logging.warning("No URL/path provided for apply")
-            QMessageBox.warning(self, "Error", "No URL/path provided")
+            QMessageBox.warning(self, "Error", "No URL/path provided") #
             return
         
         logging.info(f"Applying input string: {url}")
         self._apply_input_string(url)
 
     def on_start_clicked(self):
-        """Start the scheduler with selected settings and random wallpaper"""
-        logging.info("Start button clicked - starting scheduler with current settings")
-        
-        # Check if scheduler is enabled
-        if hasattr(self.ui, 'enabledCheck') and not self.ui.enabledCheck.isChecked():
-            logging.warning("Scheduler not enabled, enabling it first")
-            self.ui.enabledCheck.setChecked(True)
-        
-        # Get interval from UI
-        interval = 30  # default
-        if hasattr(self.ui, 'interval_spinBox'):
-            interval = self.ui.interval_spinBox.value()
-        
-        # Get current source and range
-        source = self.scheduler.source
-        if not source:
-            source = str(COLLECTION_DIR)  # default to collection
-            self.scheduler.source = source
-        
-        range_type = self.current_range
-        self.scheduler.set_range(range_type)
 
-        self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type=range_type)
-        # Check if there are any files matching the current settings
-        logging.info(f"Checking for files with source: {source}, range: {range_type}")
-        available_files = self.scheduler._get_media_files()
+        if not self.scheduler.is_active():
+            """Start the scheduler with selected settings and random wallpaper"""
+            logging.info("Start button clicked - starting scheduler with current settings")
+            
+            # Check if scheduler is enabled
+            if hasattr(self.ui, 'enabledCheck') and not self.ui.enabledCheck.isChecked():
+                logging.warning("Scheduler not enabled, enabling it first")
+                self.ui.enabledCheck.setChecked(True)
+            
+            # Get interval from UI
+            interval = 30  # default
+            if hasattr(self.ui, 'interval_spinBox'):
+                interval = self.ui.interval_spinBox.value()
+            
+            # Get current source and range
+            source = self.scheduler.source
+            if not source:
+                source = str(SAVES_DIR)  # default to collection
+                self.scheduler.source = source
+            
+            range_type = self.current_range
+
+
+            if self.scheduler.source == str(SAVES_DIR):
+                self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type=range_type)
+                # Check if there are any files matching the current settings
+                logging.info(f"Checking for files with source: {source}, range: {range_type}")
+                available_files = self.scheduler._get_media_files()
+                
+                if not available_files:
+                    # No files found for current settings - show error popup
+                    logging.warning(f"No files found for source: {source}, range: {range_type}")
+                    
+                    # Determine the error message based on settings
+                    if range_type == "mp4":
+                        error_msg = "No videos found in your collection!\n\nPlease download or add some videos first."
+                    elif range_type == "wallpaper":
+                        error_msg = "No images found in your collection!\n\nPlease download or add some images first."
+                    else:  # all
+                        error_msg = "No wallpapers found in your collection!\n\nPlease download or add some wallpapers first."
+                    
+                    QMessageBox.warning(
+                        self,
+                        "No Wallpapers Found",
+                        error_msg,
+                        QMessageBox.StandardButton.Ok
+                    ) #
+                    self._set_status("Scheduler failed - no matching wallpapers")
+                    return
+                
+                # Files available - start the scheduler
+                logging.info(f"Found {len(available_files)} files for scheduler, starting...")
+                self.scheduler.start(source,range_type, interval)
+                
+                # Apply a random wallpaper immediately from the available files
+                try:
+                    random_wallpaper = random.choice(available_files)
+                    logging.info(f"Applying random wallpaper: {random_wallpaper.name}")
+                    self._apply_wallpaper_from_path(random_wallpaper)
+                    self._set_status(f"Scheduler started - {len(available_files)} wallpapers, changing every {interval} minutes")
+                    #  upadate start button
+                    self._update_start_btn()
+                    # Show success message
+                    QMessageBox.information(
+                        self,
+                        "Scheduler Started",
+                        f"Scheduler started successfully!\n\n"
+                        f"• Source: {self._get_source_display_name(source)}\n"
+                        f"• Range: {self._get_range_display_name()}\n"
+                        f"• Interval: {interval} minutes\n"
+                        f"• Available wallpapers: {len(available_files)}\n\n"
+                        f"First wallpaper: {random_wallpaper.name}",
+                        QMessageBox.StandardButton.Ok
+                    ) #
+                    
+                except Exception as e:
+                    logging.error(f"Failed to apply random wallpaper: {e}")
+                    self._set_status("Scheduler started but failed to apply first wallpaper")
+                    QMessageBox.warning(
+                        self,
+                        "Scheduler Started with Warning",
+                        f"Scheduler started but there was an issue applying the first wallpaper:\n{str(e)}",
+                        QMessageBox.StandardButton.Ok
+                    ) # no need
+
+            elif self.scheduler.source == str(FAVS_DIR):
+                self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type="mp4")
+                self.scheduler.start(source,range_type, interval)
+                self._update_start_btn()
+
+                
+        else:
+            self._stop_scheduler()                
+
+    def _stop_scheduler(self):
+        logging.info("Stopping scheduler")
+        self.config.set_scheduler_settings(enabled=True,source=self.scheduler.source,interval=self.scheduler.interval_minutes,range_type=self.scheduler.range_type)
+        self.scheduler.stop()
+        self._update_start_btn()
+        self._set_status("Scheduler stopped")
+        self._update_source_buttons_active(None)
+
+    def _update_start_btn(self):
+        if self.scheduler.is_active():
+            self.ui.startButton.setText("Stop")
+            self.ui.startButton.setProperty("class", "primary")
+            self.ui.startButton.style().unpolish(self.ui.startButton)
+            self.ui.startButton.style().polish(self.ui.startButton)
         
-        if not available_files:
-            # No files found for current settings - show error popup
-            logging.warning(f"No files found for source: {source}, range: {range_type}")
-            
-            # Determine the error message based on settings
-            if source == str(FAVS_DIR):
-                if range_type == "mp4":
-                    error_msg = "No videos found in your favorites collection!\n\nPlease add some videos to your favorites first."
-                elif range_type == "wallpaper":
-                    error_msg = "No images found in your favorites collection!\n\nPlease add some images to your favorites first."
-                else:  # all
-                    error_msg = "No wallpapers found in your favorites collection!\n\nPlease add some wallpapers to your favorites first."
-            elif source == str(COLLECTION_DIR):
-                if range_type == "mp4":
-                    error_msg = "No videos found in your collection!\n\nPlease download or add some videos first."
-                elif range_type == "wallpaper":
-                    error_msg = "No images found in your collection!\n\nPlease download or add some images first."
-                else:  # all
-                    error_msg = "No wallpapers found in your collection!\n\nPlease download or add some wallpapers first."
-            else:
-                error_msg = f"No wallpapers found for current settings!\n\nSource: {source}\nRange: {range_type}"
-            
-            QMessageBox.warning(
-                self,
-                "No Wallpapers Found",
-                error_msg,
-                QMessageBox.StandardButton.Ok
-            )
-            self._set_status("Scheduler failed - no matching wallpapers")
-            return
+        else:
+            self.ui.startButton.setText("Start")
+            self.ui.startButton.setProperty("class", "ghost")
+            self.ui.startButton.style().unpolish(self.ui.startButton)
+            self.ui.startButton.style().polish(self.ui.startButton)
         
-        # Files available - start the scheduler
-        logging.info(f"Found {len(available_files)} files for scheduler, starting...")
-        self.scheduler.start(source, interval)
-        
-        # Apply a random wallpaper immediately from the available files
-        try:
-            random_wallpaper = random.choice(available_files)
-            logging.info(f"Applying random wallpaper: {random_wallpaper.name}")
-            self._apply_wallpaper_from_path(random_wallpaper)
-            self._set_status(f"Scheduler started - {len(available_files)} wallpapers, changing every {interval} minutes")
-            
-            # Show success message
-            QMessageBox.information(
-                self,
-                "Scheduler Started",
-                f"Scheduler started successfully!\n\n"
-                f"• Source: {self._get_source_display_name(source)}\n"
-                f"• Range: {self._get_range_display_name()}\n"
-                f"• Interval: {interval} minutes\n"
-                f"• Available wallpapers: {len(available_files)}\n\n"
-                f"First wallpaper: {random_wallpaper.name}",
-                QMessageBox.StandardButton.Ok
-            )
-            
-        except Exception as e:
-            logging.error(f"Failed to apply random wallpaper: {e}")
-            self._set_status("Scheduler started but failed to apply first wallpaper")
-            QMessageBox.warning(
-                self,
-                "Scheduler Started with Warning",
-                f"Scheduler started but there was an issue applying the first wallpaper:\n{str(e)}",
-                QMessageBox.StandardButton.Ok
-            )
+
     
     def _get_source_display_name(self, source):
         """Get display name for source"""
@@ -852,7 +901,7 @@ class TapeciarniaApp(QMainWindow):
         
         if not os.path.exists(file_path):
             logging.error(f"Browsed file does not exist: {file_path}")
-            QMessageBox.warning(self, "Error", "Selected file does not exist.")
+            QMessageBox.warning(self, "Error", "Selected file does not exist.") #
             return
         
         # Update URL input
@@ -933,17 +982,46 @@ class TapeciarniaApp(QMainWindow):
         # logging.info("Super Wallpaper source selected")
         # self._set_status("Super Wallpaper source selected")
         QMessageBox.information(self, "Super Wallpaper", 
-                            "Super Wallpaper feature - Premium curated wallpapers coming soon!")
+                            "Super Wallpaper feature - Premium curated wallpapers coming soon!") #
 
     def on_favorite_wallpapers(self):
-        QMessageBox.information(
-            self,
-            "Favorites — Coming Soon",
-            "The Favorites feature is currently under development.\n\n"
-            "You will be able to save and manage your favorite wallpapers in a future update. "
-            "Thank you for your patience and for using Tapeciarnia.",
-            QMessageBox.StandardButton.Ok
-        )
+        if not self.isLogin:
+
+            QMessageBox.information(
+                self,
+                "Favorites",
+                "Please login to access your favorite wallpapers",
+                QMessageBox.StandardButton.Ok
+            ) #
+            return
+        
+        else:
+            self.scheduler.source = str(FAVS_DIR)
+            self._set_status("Scheduler set for Favorite Collection")
+            self._update_source_buttons_active(self.scheduler.source)
+            self.scheduler.set_range("wallpaper")
+            self._disable_other_range()
+    
+    def _disable_other_range(self):
+        '''
+        Disable other range (all,MP4) when scheduler is set to online as online only give static images.
+
+        '''
+        self._update_range_buttons_active("wallpaper")
+        self.ui.range_all_bnt.setEnabled(False)
+        self.ui.range_mp4_bnt.setEnabled(False)
+    
+    def _enable_other_range(self):
+        '''
+        Disable other range (all,MP4) when scheduler is set to online as online only give static images.
+
+        '''
+        # self._update_range_buttons_active("wallpaper")
+        self.ui.range_all_bnt.setEnabled(True)
+        self.ui.range_mp4_bnt.setEnabled(True)
+    
+
+
 
     def on_added_wallpapers(self):
         """My Collection source - includes ALL folders"""
@@ -956,13 +1034,18 @@ class TapeciarniaApp(QMainWindow):
         if not (has_saves):
             logging.warning("Empty collection - no wallpapers found")
             QMessageBox.information(self, "Empty Collection", 
-                                "No wallpapers found in your collection. Download or add some wallpapers first.")
+                                "No wallpapers found in your collection. Download or add some wallpapers first.") #
             return
         
-        # Set scheduler to use ALL collection folders
+        # Set scheduler to use Save files
         self.scheduler.source = str(SAVES_DIR)
+        self._update_source_buttons_active(self.scheduler.source)
+        # updating range
+        self.scheduler.set_range("wallpaper")
+        self._update_range_buttons_active("wallpaper")
+        self._enable_other_range()
+
         self._set_status("Scheduler set to use entire collection")
-        self._update_source_buttons_active("added")
         logging.info("Scheduler set to use entire collection")
 
     # Range selection
@@ -993,36 +1076,17 @@ class TapeciarniaApp(QMainWindow):
         """Handle scheduler enable/disable"""
         isEnable = self.ui.enabledCheck.isChecked()
         self.config.set_scheduler_enabled(isEnable)
-
-        logging.info(f"Scheduler toggled: {isEnable}")
         # Update UI visibility
         self._update_scheduler_ui_state()
-        
-        if isEnable:
-            if not self.scheduler.source:
-                self.scheduler.source = str(COLLECTION_DIR)
-                self._set_status("Scheduler enabled - using entire collection")
-            
-            interval = self.scheduler.interval_minutes
-            if hasattr(self.ui, "interval_spinBox"):
-                interval = self.ui.interval_spinBox.value()
-            
-            self.scheduler.start(self.scheduler.source, interval)
-            self._set_status(f"Scheduler started - changing every {interval} minutes")
-            logging.info(f"Scheduler started with interval: {interval} minutes")
-        else:
-            self.scheduler.stop()
-            self._set_status("Scheduler stopped")
-            logging.info("Scheduler stopped")
 
     def _on_interval_changed(self, val):
         """Handle interval change"""
         logging.info(f"Interval changed to: {val} minutes")
         self.scheduler.interval_minutes = val
-        if self.scheduler.is_active():
-            self.scheduler.stop()
-            self.scheduler.start(self.scheduler.source, val)
-        self._set_status(f"Scheduler interval: {val} min")
+        # if self.scheduler.is_active():
+        #     self.scheduler.stop()
+            # self.scheduler.start(self.scheduler.source, val)
+        # self._set_status(f"Scheduler interval: {val} min")
     
     def update_ui_language(self):
         self.ui.emailInput.setPlaceholderText(f"{self.lang['auth']['emailPlaceholder']}")
@@ -1056,7 +1120,7 @@ class TapeciarniaApp(QMainWindow):
         self.ui.resetButton.setText(f"  {self.lang['settings']['resetButton']}")
 
     def set_buttons(self,enabled: bool):
-        logging.info(f"Toggleing buttons: {enabled}")
+        logging.debug(f"Toggleing buttons: {enabled}")
         self.ui.randomButton.setDisabled(not enabled)
         self.ui.randomAnimButton.setDisabled(not enabled)
         self.ui.browseButton.setDisabled(not enabled)
@@ -1070,6 +1134,10 @@ class TapeciarniaApp(QMainWindow):
     def _apply_input_string(self, text: str):
         """Main method to apply wallpaper from URL or file path."""
 
+        # stopping scheduler
+        if self.scheduler.is_active():
+            self._stop_scheduler()
+
         if not is_connected_to_internet:
             self._set_status("Unable to connect to the server.Please check your connection")
             return
@@ -1080,7 +1148,7 @@ class TapeciarniaApp(QMainWindow):
         logging.info(f"Applying input: {text}")
 
         if not text:
-            QMessageBox.warning(self, "Warning", "Please enter a valid URL or file path.")
+            QMessageBox.warning(self, "Warning", "Please enter a valid URL or file path.") #
             self.set_buttons(True)
             return
         
@@ -1089,7 +1157,7 @@ class TapeciarniaApp(QMainWindow):
         validated = validate_url_or_path(text)
         if not validated:
             logging.warning(f"Input not recognized: {text}")
-            QMessageBox.warning(self, "Error", f"Input not recognized: {text}")
+            QMessageBox.warning(self, "Error", f"Input not recognized: {text}") #
             self.set_buttons(True)
 
         if is_tapeciarnia_redirect_url(validated):
@@ -1097,7 +1165,7 @@ class TapeciarniaApp(QMainWindow):
             validated = fast_resolve_tapeciarnia_redirect(validated)
             if not validated:
                 QMessageBox.warning(self, "Unsupported URL",
-                    "The URL doesn't appear to be a supported image or video.")
+                    "The URL doesn't appear to be a supported image or video.") #
                 return            
 
         p = Path(validated)
@@ -1119,7 +1187,7 @@ class TapeciarniaApp(QMainWindow):
                 self._handle_remote_video(validated)
             else:
                 QMessageBox.warning(self, "Unsupported URL",
-                                    "The URL doesn't appear to be a supported image or video.")
+                                    "The URL doesn't appear to be a supported image or video.") #
             self.set_buttons(True)
             return
     
@@ -1127,7 +1195,7 @@ class TapeciarniaApp(QMainWindow):
 
             # -------- Fallback --------
             logging.warning(f"Unsupported input type: {text}")
-            QMessageBox.warning(self, "Unsupported URL", "The URL doesn't appear to be a supported image or video.")
+            QMessageBox.warning(self, "Unsupported URL", "The URL doesn't appear to be a supported image or video.") #
             self.set_buttons(True)
 
 
@@ -1142,7 +1210,7 @@ class TapeciarniaApp(QMainWindow):
             self._apply_image(str(file_path))
         else:
             logging.warning(f"Unsupported local file type: {file_path.suffix}")
-            QMessageBox.warning(self, "Unsupported", "Unsupported local file type.")
+            QMessageBox.warning(self, "Unsupported file", "Unsupported local file type.") #
 
 
     def _handle_remote_image(self, url: str):
@@ -1167,7 +1235,7 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Image download setup failed: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Image download setup failed: {e}")
+            QMessageBox.critical(self, "Error", f"Image download setup failed: {e}") #
 
     def _on_image_download_done(self, file_path: str):
         """Handle completion of image download"""
@@ -1209,7 +1277,7 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Direct download setup failed: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Download setup failed: {e}")
+            QMessageBox.critical(self, "Error", f"Download setup failed: {e}") #
 
     def _on_direct_video_download_done(self, file_path: str):
         """Handle completion of direct video download - FIXED to not set wallpaper on failure"""
@@ -1281,7 +1349,7 @@ class TapeciarniaApp(QMainWindow):
                     "File Error", 
                     "The file is no longer available. Operation cancelled.",
                     QMessageBox.StandardButton.Ok
-                )
+                ) #
                 return
             
             self._process_download_file(downloaded_file_path)
@@ -1293,7 +1361,7 @@ class TapeciarniaApp(QMainWindow):
                 "Error",
                 f"Failed to process file: {str(e)}",
                 QMessageBox.StandardButton.Ok
-            )
+            ) #no need
 
 
     def _process_download_file(self, downloaded_file_path: Path):
@@ -1306,22 +1374,32 @@ class TapeciarniaApp(QMainWindow):
 
         except Exception as e:
             logging.error(f"Failed to process downloaded file: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
+            logger.error(f"Failed to add file: {str(e)}")
+            # QMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
 
 
     def _apply_wallpaper_from_path(self, file_path: Path):
         """Apply wallpaper from file path - OPTIMIZED to avoid unnecessary stops"""
         logging.info(f"Applying wallpaper from path: {file_path}")
-        current_is_video = self.controller.current_is_video
-        new_is_video = file_path.suffix.lower() in (".mp4", ".mkv", ".webm", ".avi", ".mov")
-        
-        # Only stop if necessary (video to video, video to image, or image to video)
-        needs_stop = (current_is_video and new_is_video) or (current_is_video and not new_is_video) or (not current_is_video and new_is_video)
+        new_is_video = file_path.suffix.lower() in self.config.get_valid_video_extensions()
         
         if new_is_video:
             self._apply_video(str(file_path))
         else:
             self._apply_image(str(file_path))
+
+    def _apply_wallpaper_from_scheduler(self,file_path: Path=None,image_data:list[str,bytes]=None):
+        if self.scheduler.source == str(SAVES_DIR):
+            if file_path:
+                self._apply_wallpaper_from_path(file_path=file_path)
+        elif self.scheduler.source == str(FAVS_DIR):
+            if image_data:
+                path = conver_bytes_to_tmp_path(image_data.get("data"))
+                self.controller.start_image(path)
+                self._set_status(f"Applied wallpaper: {gen_name_from_url(image_data.get("url"))}")
+        else:
+            pass
+                
 
     def _apply_video(self, video_path: str):
         """Apply video wallpaper"""
@@ -1337,7 +1415,7 @@ class TapeciarniaApp(QMainWindow):
         except Exception as e:
             self.set_buttons(True)
             logging.error(f"Failed to play video: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to play video: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to play video: {e}") #
 
     def _apply_image(self, image_path: str):
         """Apply image wallpaper with fade effect - FIXED for null pixmap"""
@@ -1378,7 +1456,7 @@ class TapeciarniaApp(QMainWindow):
                 self._update_url_input(image_path)
             except Exception as fallback_error:
                 logging.error(f"Fallback image application also failed: {fallback_error}")
-                QMessageBox.warning(self, "Error", f"Failed to apply image: {fallback_error}")
+                QMessageBox.critical(self, "Error", f"Failed to apply image: {fallback_error}") #
 
     # Utility methods - FIXED: Proper media type separation
     def _get_media_files(self, media_type="all"):
@@ -1390,10 +1468,10 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self, 'scheduler') and self.scheduler.source:
             if self.scheduler.source == str(FAVS_DIR):
                 search_folders = [FAVS_DIR]
-                source_type = "favorites"
+                source_type = "frvt"
             elif self.scheduler.source == str(SAVES_DIR):
                 search_folders = [SAVES_DIR]
-                source_type = "collection"
+                source_type = "save"
             else:
                 search_folders = [Path(self.scheduler.source)]
                 source_type = "custom"
@@ -1436,13 +1514,13 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, "urlInput"):
             self.ui.urlInput.setText(text)
 
-    def _update_source_buttons_active(self, active_source="added"):
+    def _update_source_buttons_active(self, active_source):
         """Update source button styles"""
         logging.debug(f"Updating source button styles for: {active_source}")
         sources = {
             "super": getattr(self.ui, "super_wallpaper_btn", None),
-            "favorites": getattr(self.ui, "fvrt_wallpapers_btn", None),
-            "added": getattr(self.ui, "added_wallpaper_btn", None)
+            str(FAVS_DIR): getattr(self.ui, "fvrt_wallpapers_btn", None),
+            str(SAVES_DIR): getattr(self.ui, "added_wallpaper_btn", None)
         }
         
         for btn in sources.values():
@@ -1607,7 +1685,7 @@ class TapeciarniaApp(QMainWindow):
             "Online Unavailable",
             "Could not fetch online wallpaper. Using local collection instead.",
             QMessageBox.StandardButton.Ok
-        )
+        ) #
         
         # Use local shuffle
         if is_animated:
@@ -1628,7 +1706,7 @@ class TapeciarniaApp(QMainWindow):
                 self, 
                 "No Videos", 
                 "No animated wallpapers found in your local collection."
-            )
+            ) #
             self._update_shuffle_button_states(None)
             self.current_shuffle_type = None
             return
@@ -1674,7 +1752,7 @@ class TapeciarniaApp(QMainWindow):
     def _on_download_error(self, error_msg: str):
         """Handle download errors"""
         logging.error(f"Download error: {error_msg}")
-        QMessageBox.critical(self, "Download Error", error_msg)
+        QMessageBox.critical(self, "Download Error", error_msg) #
         self._set_status(f"Download failed: {error_msg}")
         self.set_buttons(True)
 
@@ -1702,18 +1780,29 @@ class TapeciarniaApp(QMainWindow):
         self.scheduler.source = source
         self.scheduler.interval_minutes = interval
         self.scheduler.range_type = range_type
+
         if hasattr(self.ui, "interval_spinBox"):
             self.ui.interval_spinBox.setValue(interval)
 
         # if hasattr(self.ui, "enabledCheck"):
         #     self.ui.enabledCheck.setChecked(True)
 
-        self._update_source_buttons_active("added")
+        # Set the collection button
+        if source == str(SAVES_DIR):
+            self._update_source_buttons_active(source)
         
-        logging.info(f"Loaded scheduler settings - source: {source}, interval: {interval}, enabled: {enabled}")
+        elif source == str(FAVS_DIR) and self.isLogin:
+            self._update_source_buttons_active(source)
+        else:
+            self._update_source_buttons_active(None)
+
+        
+        logging.info(f"Loaded scheduler settings - source: {source}, range: {range_type}, interval: {interval}, enabled: {enabled}")
         
         # Update UI state based on scheduler
         self._update_scheduler_ui_state()
+        # load start button state
+        self._update_start_btn()
         logging.info("Settings loaded successfully")
 
     # System tray
@@ -1725,7 +1814,7 @@ class TapeciarniaApp(QMainWindow):
         # Check if system tray is available
         if not QSystemTrayIcon.isSystemTrayAvailable():
             logging.error("System tray is not available on this system")
-            QMessageBox.critical(None, "System Tray", "System tray is not available on this system.")
+            QMessageBox.critical(None, "System Tray", "System tray is not available on this system.") #
             return
         
         # Create tray icon
@@ -1802,7 +1891,7 @@ class TapeciarniaApp(QMainWindow):
                 url = "https://tapeciarnia.pl/program/login_2025.php"
                 payload = {
                 "login": email, # aka username
-                "key": password, # aka password
+                "haslo": password, # aka password
                 "lang": self.config.get_language()
                 }
 
@@ -1810,16 +1899,18 @@ class TapeciarniaApp(QMainWindow):
                 login = LoginWorker(url=url, payload=payload,method="GET")
                 login.success.connect(self._on_login_success)
                 login.failed.connect(lambda e: self._on_login_failed(data=e,login_worker=login))
+                self._set_status("Logging in...")
                 login.start()
 
             else:
+                self._set_status("Invalid credential")
                 self.ui.logInBnt.setEnabled(True)  
                 QMessageBox.information(
                     self,
                     "Invalid credential",
                     "Please enter valid credentials",
                     QMessageBox.StandardButton.Ok
-                )
+                ) #
 
         else:
             self.handle_log_out()
@@ -1828,23 +1919,29 @@ class TapeciarniaApp(QMainWindow):
     def _on_login_success(self,data:dict):
         self.ui.logInBnt.setEnabled(True)
         if data.get("is_ok") == True:
+            # made username globle to make it available for future user
+            self.user_name:str = data.get("login","Unkonw")
+            self.handle_username()
+            self.ui.user_name_label.setText(self.user_name)
             self.isLogin = True
             self._setLogInState()
             self.config.set_login_status(self.isLogin)
+            
 
             self.ui.passwordInput.clear()
             self.ui.emailInput.clear()
 
             self.config.set_login_key(data.get("key"))
             self.config.set_login(data.get("login"))
-
+            self._set_status("Login successfull")
             QMessageBox.information(
                 self,
                 "Log in successfull",
-                str(data),
+                f"Welcome back {data.get('login')}",
+                # str(data),
                 QMessageBox.StandardButton.Ok
-            )
-            logging.info("Logging in success")
+            ) #
+            logging.info("Login successfull")
 
             # hide the input areas and change the text on log in bnt to log out
         
@@ -1854,10 +1951,10 @@ class TapeciarniaApp(QMainWindow):
                 "Log in faild",
                 str(data),
                 QMessageBox.StandardButton.Ok
-            )
+            ) #
             logging.info("Logging failed")
 
-        
+    
 
     
     def _on_login_failed(self,data,login_worker:LoginWorker):
@@ -1867,19 +1964,42 @@ class TapeciarniaApp(QMainWindow):
             "Log in faild",
             str(data),
             QMessageBox.StandardButton.Ok
-        )
+        ) #
         logging.info("Logging failed")
         login_worker.stop()
+        self._set_status("Login Failed")
         logging.warning(f"Logging in failed: {data}")
 
     def handle_log_out(self):
+        # reset username lable
+        self.user_name = None
+        self.handle_username()
+        # -------------------------
         self.ui.logInBnt.setEnabled(True)
         self.isLogin = False
         self.config.set_login_status(self.isLogin)
         self.config.clear_session()
         self._setLogInState()
         self.ui.urlInput.clear()
+        self._set_status("Logout successfull")
         self.ui.passwordInput.clear()
+
+        if self.scheduler.is_active() and self.scheduler.source == str(FAVS_DIR):
+            self._stop_scheduler()
+
+
+    def _handel_mouse_press_username(self,e):
+        if self.user_name:
+            webbrowser.open_new_tab(f"https://www.tapeciarnia.pl/user_{self.user_name}")
+
+    def handle_username(self) -> None:
+        if self.user_name:
+            self.ui.user_name_label.setVisible(True)
+            self.ui.user_name_label.setText(self.user_name)
+            
+        else:
+            self.ui.user_name_label.setVisible(False)
+
 
     def _exit_app(self):
         """Properly quit the application from tray menu with confirmation and progress"""
@@ -1945,12 +2065,12 @@ class TapeciarniaApp(QMainWindow):
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
                     else:
                         self._set_status("Wallpaper change from URI was cancelled by user")
                 else:
                     logging.error("setwallpaper action received, but 'url' parameter is missing.")
-                    QMessageBox.warning(self, "URI Error", "The 'setwallpaper' command is missing the required URL parameter.")
+                    # QMessageBox.warning(self, "URI Error", "The 'setwallpaper' command is missing the required URL parameter.")
 
 
             elif action == "mp4_url":
@@ -1989,7 +2109,7 @@ class TapeciarniaApp(QMainWindow):
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
                     else:
                         self._set_status("Wallpaper change from URI was cancelled by user")
 
@@ -2027,13 +2147,13 @@ class TapeciarniaApp(QMainWindow):
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
                     else:
                         self._set_status("Wallpaper change from URI was cancelled by user")
                         
                 else:
                     logging.error("set_url_default action received, but 'url' parameter is missing.")
-                    QMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
+                    # QMessageBox.warning(self, "URI Error", "The command is missing the required URL parameter.")
 
             elif action == "openfavorites":
                 logging.info("Executing openfavorites command.")
@@ -2041,18 +2161,18 @@ class TapeciarniaApp(QMainWindow):
                     folder = get_folder_for_source("favorites")
                     if not folder.exists():
                         logging.warning(f"Favorites folder does not exist: {folder}")
-                        QMessageBox.warning(self, "Folder Not Found", f"The favorites folder does not exist:\n{folder}")
+                        QMessageBox.warning(self, "Folder Not Found", f"The favorites folder does not exist:\n{folder}") #
                     else:
                         success = open_folder_in_explorer(folder)
                         if success:
                             self._set_status("Opened Favorites folder")
-                            QMessageBox.information(self, "Opened Favorites", f"Opened favorites folder:\n{folder}")
+                            QMessageBox.information(self, "Opened Favorites", f"Opened favorites folder:\n{folder}") # no need
                         else:
                             logging.error(f"Failed to open favorites folder in explorer: {folder}")
-                            QMessageBox.warning(self, "Open Failed", f"Could not open folder in file explorer:\n{folder}")
+                            QMessageBox.warning(self, "Open Failed", f"Could not open folder in file explorer:\n{folder}") #
                 except Exception as e:
                     logging.error(f"Failed to open favorites folder: {e}", exc_info=True)
-                    QMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}")
+                    QMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}") #no need
             
             elif action == "id":
                 
@@ -2093,17 +2213,17 @@ class TapeciarniaApp(QMainWindow):
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                            # QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
                     else:
                         self._set_status("Wallpaper change from URI was cancelled by user")
                         
                 else:
-                    logging.error("set_url_default action received, but 'url' parameter is missing.")
-                    QMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
+                    logging.error("id action received, but 'id' parameter is missing.")
+                    # QMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
 
 
 
             else:
                 logging.warning(f"Unknown URI action received: {action}")
-                QMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")
+                # QMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")
 

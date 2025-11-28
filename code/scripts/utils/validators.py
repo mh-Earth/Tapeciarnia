@@ -10,13 +10,17 @@ import requests
 from utils.singletons import get_config
 
 
+# scheduler modes
+MY_COLLECTION_MODE = "save"
+FAVOURITE_MODE = 'frvt'
+SUPER_MODE = 'super'
 
 def is_image_url_or_path(s: str) -> bool:
     """Check if string is an image URL or path - IMPROVED"""
     s = s.lower()
     
     # Check for image file extensions
-    image_extensions = ('.jpg', '.jpeg', '.png',  '.gif', '.webp')
+    image_extensions = get_config().get_valid_image_extensions()
     
     # Check local file path
     if any(s.endswith(ext) for ext in image_extensions):
@@ -35,7 +39,7 @@ def is_video_url_or_path(s: str) -> bool:
     s = s.lower()
     
     # Check for video file extensions
-    video_extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv', '.wmv')
+    video_extensions = get_config().get_valid_video_extensions()
     
     # Check local file path
     if any(s.endswith(ext) for ext in video_extensions):
