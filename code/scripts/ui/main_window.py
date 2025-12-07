@@ -5,16 +5,15 @@ import logging
 import logging
 from pathlib import Path
 import webbrowser
-import json
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QFileDialog, QMessageBox, 
-    QSystemTrayIcon, QMenu, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QStyle, QSizePolicy, QDialog,QSpacerItem
+    QApplication, QMainWindow, QFileDialog,
+    QSystemTrayIcon, QMenu, QVBoxLayout,
+    QStyle, QSizePolicy,QSpacerItem
 )
 from PySide6.QtGui import QAction, QIcon, QPixmap
-from PySide6.QtCore import QTimer, Qt, QEvent, QSize,Signal, QThread
-from .widgets import EnhancedDragDropWidget
+from PySide6.QtCore import QTimer, Qt, QEvent, QSize
+from .widgets import EnhancedDragDropWidget,CustomMessageBox,ButtonCollection
 
 current_dir = os.path.dirname(__file__)
 ui_path = os.path.join(current_dir, 'mainUI.py')
@@ -37,23 +36,21 @@ except ImportError as e:
 
 # Import core modules
 from core.wallpaper_controller import WallpaperController
-from core.download_manager import DirectDownloadThread,ImageDownloadThread
+from core.download_manager import VideoDownloadThread,ImageDownloadThread
 from core.scheduler import UnifiedWallpaperScheduler
-from core.language_controller import LanguageController
 from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url
+from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,find_key_by_value_nested
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
-from utils.singletons import get_config
+from utils.singletons import get_config,get_language_controller
 # Import models
-from models.config import Config
 
 # Import UI components
-from .dialogs import ShutdownProgressDialog
+# from .dialogs import ShutdownProgressDialog
 
 
 
@@ -65,11 +62,13 @@ class TapeciarniaApp(QMainWindow):
         self.ui.setupUi(self)
         self.x , self.y = get_primary_screen_dimensions()
         self.is_dowloading = False
+        self.isLogin:bool = False # temporary
+
         # Initialize controllers
         logging.debug("Initializing controllers")
         self.controller = WallpaperController()
         self.scheduler = UnifiedWallpaperScheduler()
-        self.language_controller = LanguageController()
+        self.language_controller = get_language_controller()
         self.scheduler.set_change_callback(self._apply_wallpaper_from_scheduler)
         self.config = get_config()
 
@@ -86,7 +85,6 @@ class TapeciarniaApp(QMainWindow):
         self.auto_pause_process = None
         self.last_wallpaper_path = None
         self.current_shuffle_mode = None
-        self.isLogin:bool = False # temporary
         self.user_name:str|None = None
         # scheduler
         self.scheduler.set_api_url(f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user=gmail&pokaz=ulubione_tap&x={self.x}&y={self.y}&hd=1")
@@ -108,6 +106,8 @@ class TapeciarniaApp(QMainWindow):
         self._load_settings()
         self._setLogInState()
         
+        self.customMessageBox = CustomMessageBox(ButtonCollection(language_data=self.language_controller.lang))
+        
 
         logging.info("TapeciarniaApp initialization completed successfully")
 
@@ -118,11 +118,11 @@ class TapeciarniaApp(QMainWindow):
         if self.isLogin:
             self.ui.emailInput.hide()
             self.ui.passwordInput.hide()
-            self.ui.logInBnt.setText("Log out")
+            self.ui.logInBnt.setText(self.language_controller.get("auth.logOutButton"))
         else:
             self.ui.emailInput.show()
             self.ui.passwordInput.show()
-            self.ui.logInBnt.setText("Log in")
+            self.ui.logInBnt.setText(self.language_controller.get("auth.logInButton"))
 
         self.update()
 
@@ -152,18 +152,22 @@ class TapeciarniaApp(QMainWindow):
                     logging.debug("Browse dialog cancelled")
 
 
-    def _update_lang(self, lang:dict):
+    def _update_lang(self):
         """Update UI language based on selected language"""
-        self.lang = lang
+        self.current_lang =  self.language_controller.lang
         # 
         self.update_ui_language()
         self.drag_drop_widget.update_language()
+        self._update_status_label_language()
+        self.customMessageBox.update_language(self.current_lang)
+        # restore status to empty
+        self._set_status(self.language_controller.get("status.genaral.language_changed",default=f"Language change to {self.config.get_language()}").format(self.config.get_language())) #
 
     def _set_lang(self):
         logging.info("Eumarating all language options into combo box")
         self.language_controller.enumerate_languages(self.ui.langCombo)
         # Set initial language
-        self.lang = self.language_controller.setup_initial_language(self.ui.langCombo)
+        self.language_controller.setup_initial_language(self.ui.langCombo)
         self.update_ui_language()
 
     def _make_icon(self,icon_name:QIcon,className:str ="primary") -> QIcon:
@@ -180,15 +184,18 @@ class TapeciarniaApp(QMainWindow):
             icon.addFile(f":/icons/icons/{icon_name}.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
             return icon
  
-
+    # update status label on language change
+    def _update_status_label_language(self):
+        """Update status label text based on current status message and language"""
+        self._set_status(self.language_controller.get("status.genaral.language_changed").format(self.config.get_language()))
 
     def _set_status(self, message: str):
         """Update status label and ensure it's visible"""
         logging.debug(f"Setting status: {message}")
         if hasattr(self.ui, "statusLabel"):
-            self.ui.statusLabel.setText(message)
             self.ui.statusLabel.setVisible(True)
-        # Also ensure the parent frame is visible
+            self.ui.statusLabel.setText(message)
+
         if hasattr(self.ui, "bottomFrame"):
             self.ui.bottomFrame.setVisible(True)
 
@@ -199,7 +206,7 @@ class TapeciarniaApp(QMainWindow):
         self.current_shuffle_type = 'animated'
 
         # Update button states
-        self._set_status("Fetching online animated wallpaper...")
+        self._set_status(self.language_controller.get("status.genaral.fetching_online_wallpaper")) #
         self._update_shuffle_button_states('animated')
         self.set_buttons(False)
         
@@ -225,7 +232,7 @@ class TapeciarniaApp(QMainWindow):
         self.current_shuffle_type = 'wallpaper'
         
         # Update button states
-        self._set_status("Fetching online wallpaper...")
+        self._set_status(self.language_controller.get("status.genaral.fetching_online_wallpaper")) #
         self._update_shuffle_button_states('wallpaper')
         self.set_buttons(False)
 
@@ -252,6 +259,12 @@ class TapeciarniaApp(QMainWindow):
         self.current_wallpaper_type = None
         self.last_wallpaper_path = None
         self.current_shuffle_mode = None
+
+        # reset scheduler state
+        if self.config.get_scheduler_enabled():
+            self.scheduler.reset()
+            self._update_range_buttons_active(None)
+            self._update_source_buttons_active(None)
         
         # Reset shuffle button states
         if hasattr(self.ui, 'randomButton'):
@@ -273,15 +286,15 @@ class TapeciarniaApp(QMainWindow):
             self.drag_drop_widget.restore_original_wallpaper()
         elif self.previous_wallpaper:
             self.controller.start_image(self.previous_wallpaper)
-            self._set_status("Restored previous wallpaper")
+            self._set_status(self.language_controller.get("status.genaral.Failed_to_restore_original_wallpaper")) #
         else:
-            self._set_status("Reset complete (no previous wallpaper)")
+            self._set_status(self.language_controller.get("status.genaral.reset_complete"))
         
         # Clear URL input
         if hasattr(self.ui, 'urlInput'):
             self.ui.urlInput.clear()
         
-        self._set_status("Reset completed")
+        self._set_status(self.language_controller.get("status.genaral.reset_completed"))
         logging.info("Reset completed successfully")
         
         # Show success confirmation
@@ -292,14 +305,15 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Showing reset success confirmation")
         
         # Create a custom dialog for better UX
-        success_dialog = QMessageBox(self)
-        success_dialog.setWindowTitle(self.lang["dialog"]["reset_success_title"])
-        success_dialog.setText(self.lang["dialog"]["reset_success_message"])
-        success_dialog.setIcon(QMessageBox.Icon.Information)
-        success_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        self.customMessageBox.information(
+            None,
+            self.language_controller.get("dialog.info.reset_success_title"),
+            self.language_controller.get("dialog.info.reset_success_message")
+
+        )
         
         # Show the dialog
-        success_dialog.exec()
+        # success_dialog.exec()
         logging.info("Reset success confirmation shown")
 
     def cleanup(self):
@@ -323,17 +337,16 @@ class TapeciarniaApp(QMainWindow):
         Handle window close event - Show confirmation dialog before closing
         """
         logging.info("Close event triggered")
-        reply = QMessageBox.question(
+
+        reply = self.customMessageBox.question(
             self,
-            self.lang['dialog']['confirm_exit_title'],
-            self.lang['dialog']['confirm_exit_dialog'],
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            self.language_controller.get("dialog.qustions.confirm_exit_title"),
+            self.language_controller.get("dialog.qustions.confirm_exit_dialog"),
         )
-        
-        if reply == QMessageBox.StandardButton.Yes:
+
+        # self.customMessageBox.YesRole = 0
+        if reply == 2:
             logging.info("User confirmed exit")
-            # Show shutdown progress dialog
             self._show_shutdown_progress(event)
         else:
             logging.info("User cancelled exit")
@@ -344,8 +357,8 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Starting shutdown process with enhanced progress dialog")
         
         # Create and show shutdown progress dialog
-        self.shutdown_dialog = ShutdownProgressDialog(self)
-        self.shutdown_dialog.show()
+        # self.shutdown_dialog = ShutdownProgressDialog(self)
+        # self.shutdown_dialog.show()
         
         # Start the actual shutdown process after dialog is shown
         QTimer.singleShot(200, lambda: self._perform_shutdown(event))
@@ -356,17 +369,17 @@ class TapeciarniaApp(QMainWindow):
             logging.info("Performing coordinated shutdown sequence")
             
             # Step 1: Stop wallpaper processes (25%)
-            self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
+            # self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
             self.controller.stop()
             QApplication.processEvents()
             
             # Step 2: Stop scheduler (50%)
-            self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
+            # self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
             self._stop_scheduler()
             QApplication.processEvents()
             
             # Step 3: Cleanup resources (75%)
-            self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
+            # self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
             try:
                 if hasattr(self, 'stop_auto_pause_process'):
                     self.stop_auto_pause_process()
@@ -375,12 +388,12 @@ class TapeciarniaApp(QMainWindow):
             QApplication.processEvents()
             
             # Step 4: Save settings (90%)
-            self.shutdown_dialog.update_progress(90, "Saving settings...")
+            # self.shutdown_dialog.update_progress(90, "Saving settings...")
             # Add any final settings save operations here
             QApplication.processEvents()
             
             # Step 5: Complete (100%)
-            self.shutdown_dialog.update_progress(100, "Shutdown complete!")
+            # self.shutdown_dialog.update_progress(100, "Shutdown complete!")
             QApplication.processEvents()
             
             # Wait a moment to show completion, then finalize
@@ -424,8 +437,8 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Starting shutdown process from tray with progress dialog")
         
         # Create and show shutdown progress dialog
-        self.shutdown_dialog = ShutdownProgressDialog(self)
-        self.shutdown_dialog.show()
+        # self.shutdown_dialog = ShutdownProgressDialog(self)
+        # self.shutdown_dialog.show()
         
         # Start shutdown process
         QTimer.singleShot(200, self._perform_shutdown_from_tray)
@@ -436,17 +449,17 @@ class TapeciarniaApp(QMainWindow):
             logging.info("Performing shutdown sequence from tray")
             
             # Step 1: Stop wallpaper processes (25%)
-            self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
+            # self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
             self.controller.stop()
             QApplication.processEvents()
             
             # Step 2: Stop scheduler (50%)
-            self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
+            # self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
             self._stop_scheduler()
             QApplication.processEvents()
             
             # Step 3: Cleanup (75%)
-            self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
+            # self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
             try:
                 if hasattr(self, 'stop_auto_pause_process'):
                     self.stop_auto_pause_process()
@@ -455,11 +468,11 @@ class TapeciarniaApp(QMainWindow):
             QApplication.processEvents()
             
             # Step 4: Save settings (90%)
-            self.shutdown_dialog.update_progress(90, "Saving settings...")
+            # self.shutdown_dialog.update_progress(90, "Saving settings...")
             QApplication.processEvents()
             
             # Step 5: Complete (100%)
-            self.shutdown_dialog.update_progress(100, "Shutdown complete!")
+            # self.shutdown_dialog.update_progress(100, "Shutdown complete!")
             QApplication.processEvents()
             
             # Wait a moment to show completion
@@ -515,8 +528,8 @@ class TapeciarniaApp(QMainWindow):
         self.is_minimized_to_tray = True
         if hasattr(self, 'tray'):
             self.tray.showMessage(
-                self.lang["dialog"]["icon_tray_title"],
-                self.lang["dialog"]["icon_tray_message"],
+                self.language_controller.get("dialog.info.icon_tray_title"),
+                self.language_controller.get("dialog.info.icon_tray_message"),
                 QSystemTrayIcon.Information,
                 3000
             )
@@ -583,15 +596,15 @@ class TapeciarniaApp(QMainWindow):
         if folder_path.exists():
             success = open_folder_in_explorer(folder_path)
             if success:
-                self._set_status(f"Opened {source_type} folder")
+                # self._set_status(self.language_controller.get("status.genaral.opened_range_type_range_folder").format() folder")
                 logging.info(f"Successfully opened folder: {folder_path}")
             else:
-                self._set_status(f"Failed to open {source_type} folder")
+                # self._set_status(f"Failed to open {source_type} folder")
                 logging.error(f"Failed to open folder: {folder_path}")
         else:
             logging.warning(f"Folder does not exist: {folder_path}")
-            QMessageBox.warning(self, "Folder Not Found", 
-                            f"The {source_type} folder does not exist:\n{folder_path}") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.folder_not_found_title"), 
+                            self.language_controller.get("dialog.warning.file_not_found_message").format(source_type=source_type) + f"\n{folder_path}") #
 
     def on_range_double_clicked(self, range_type):
         """Handle double-click on range buttons to open corresponding folder"""
@@ -601,14 +614,14 @@ class TapeciarniaApp(QMainWindow):
         if folder_path.exists():
             success = open_folder_in_explorer(folder_path)
             if success:
-                self._set_status(f"Opened {range_type} range folder")
+                self._set_status(self.language_controller.get("status.genaral.opened_range_type_range_folder").format(range_type=range_type)) #
                 logging.info(f"Successfully opened folder: {folder_path}")
             else:
-                self._set_status(f"Failed to open {range_type} folder")
+                self._set_status(self.language_controller.get("status.genaral.failed_to_open_range_type_folder").format(range_type=range_type)) #
                 logging.error(f"Failed to open folder: {folder_path}")
         else:
             logging.warning(f"Folder does not exist: {folder_path}")
-            QMessageBox.warning(self, "Folder Not Found", 
+            self.customMessageBox.warning(self, "Folder Not Found", 
                             f"The {range_type} folder does not exist:\n{folder_path}") #
 
     def _bind_ui_controls(self):
@@ -708,21 +721,24 @@ class TapeciarniaApp(QMainWindow):
 
         logging.debug(f"Updating scheduler UI state: enabled={enabled}")
         logging.info(f"Toggling scheduler visibility: {enabled}")
-        
+
+        # ------------------------------------------------------------------
+        if hasattr(self.ui, "enabledCheck"):
+            self.ui.enabledCheck.setChecked(enabled)
+
         # Show/hide interval and range controls
         if hasattr(self.ui, "source_n_interval_frame"):
             self.ui.source_n_interval_frame.setVisible(enabled)
         if hasattr(self.ui, "range_frame"):
             self.ui.range_frame.setVisible(enabled)
-        # insert a spacer  between them
 
+        # Spacer logic
         if enabled:
             # Remove the spacer only if it exists
             if hasattr(self, "lowestVerticalSpacer") and self.lowestVerticalSpacer:
                 self.ui.cardLayout.removeItem(self.lowestVerticalSpacer)
                 self.lowestVerticalSpacer = None
                 logging.debug("Removing the spacer")
-
         else:
             # Create and insert spacer only if not already created
             if not hasattr(self, "lowestVerticalSpacer") or self.lowestVerticalSpacer is None:
@@ -739,7 +755,7 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, "startButton"):
             self.ui.startButton.setVisible(enabled)
             logging.debug(f"Start button visibility: {enabled}")
-        
+
         logging.debug(f"Scheduler UI controls set to visible: {enabled}")
 
     # Main application methods
@@ -749,13 +765,16 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Apply/Load button clicked")
         if not hasattr(self.ui, "urlInput"):
             logging.error("No URL input field available in UI")
-            # QMessageBox.warning(self, "Error", "No input field available in UI")
+            # self.customMessageBox.warning(self, "Error", "No input field available in UI")
+            self.ui.loadUrlButton.setDisabled(False)
+
             return
         
         url = self.ui.urlInput.text().strip()
         if not url:
             logging.warning("No URL/path provided for apply")
-            QMessageBox.warning(self, "Error", "No URL/path provided") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.empty_url_field_title"), self.language_controller.get("dialog.warning.empty_url_field_message")) #
+            self.ui.loadUrlButton.setDisabled(False)
             return
         
         logging.info(f"Applying input string: {url}")
@@ -773,14 +792,12 @@ class TapeciarniaApp(QMainWindow):
                 self.ui.enabledCheck.setChecked(True)
             
             # Get interval from UI
-            interval = 30  # default
             if hasattr(self.ui, 'interval_spinBox'):
                 interval = self.ui.interval_spinBox.value()
             
             # Get current source and range
             source = self.scheduler.source
             if not source:
-                source = str(SAVES_DIR)  # default to collection
                 self.scheduler.source = source
             
             range_type = self.current_range
@@ -798,19 +815,19 @@ class TapeciarniaApp(QMainWindow):
                     
                     # Determine the error message based on settings
                     if range_type == "mp4":
-                        error_msg = "No videos found in your collection!\n\nPlease download or add some videos first."
+                        error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.no_mp4")
                     elif range_type == "wallpaper":
-                        error_msg = "No images found in your collection!\n\nPlease download or add some images first."
+                        error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.no_wallpapers")
                     else:  # all
-                        error_msg = "No wallpapers found in your collection!\n\nPlease download or add some wallpapers first."
+                        error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.all")
                     
-                    QMessageBox.warning(
+                    self.customMessageBox.warning(
                         self,
-                        "No Wallpapers Found",
+                        self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_title"),
                         error_msg,
-                        QMessageBox.StandardButton.Ok
+
                     ) #
-                    self._set_status("Scheduler failed - no matching wallpapers")
+                    self._set_status(self.language_controller.get("status.genaral.scheduler_failed_no_matching_wallpapers")) #
                     return
                 
                 # Files available - start the scheduler
@@ -822,11 +839,12 @@ class TapeciarniaApp(QMainWindow):
                     random_wallpaper = random.choice(available_files)
                     logging.info(f"Applying random wallpaper: {random_wallpaper.name}")
                     self._apply_wallpaper_from_path(random_wallpaper)
-                    self._set_status(f"Scheduler started - {len(available_files)} wallpapers, changing every {interval} minutes")
+                    self._set_status(self.language_controller.get("status.genaral.scheduler_started").format(available_files=len(available_files),interval=interval)) #
+                    # self._set_status(f"Scheduler started - {len(available_files)} wallpapers, changing every {interval} minutes") #
                     #  upadate start button
                     self._update_start_btn()
                     # Show success message
-                    QMessageBox.information(
+                    self.customMessageBox.information(
                         self,
                         "Scheduler Started",
                         f"Scheduler started successfully!\n\n"
@@ -835,45 +853,63 @@ class TapeciarniaApp(QMainWindow):
                         f"• Interval: {interval} minutes\n"
                         f"• Available wallpapers: {len(available_files)}\n\n"
                         f"First wallpaper: {random_wallpaper.name}",
-                        QMessageBox.StandardButton.Ok
+                        
                     ) #
                     
                 except Exception as e:
                     logging.error(f"Failed to apply random wallpaper: {e}")
-                    self._set_status("Scheduler started but failed to apply first wallpaper")
-                    QMessageBox.warning(
+                    self._set_status(self.language_controller.get("status.genarel.scheduler_started_but_failed")) #
+                    self.customMessageBox.warning(
                         self,
                         "Scheduler Started with Warning",
                         f"Scheduler started but there was an issue applying the first wallpaper:\n{str(e)}",
-                        QMessageBox.StandardButton.Ok
+                        
                     ) # no need
 
             elif self.scheduler.source == str(FAVS_DIR):
                 self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type="mp4")
                 self.scheduler.start(source,range_type, interval)
+                self.scheduler.online_worker.sendStopSignal.connect(self._stop_scheduler)
+
                 self._update_start_btn()
 
+            else:
+                self.customMessageBox.warning(
+                    self,
+                    "Scheduler Error",
+                    "Scheduler can only be started with 'My Collection' or 'Favorites' as source.", 
+                ) #
+                logging.error("Scheduler start failed - invalid source")
                 
         else:
             self._stop_scheduler()                
 
-    def _stop_scheduler(self):
-        logging.info("Stopping scheduler")
+    def _stop_scheduler(self,msg:str=None):
+        # logging.info("Stopping scheduler")
         self.config.set_scheduler_settings(enabled=True,source=self.scheduler.source,interval=self.scheduler.interval_minutes,range_type=self.scheduler.range_type)
         self.scheduler.stop()
         self._update_start_btn()
-        self._set_status("Scheduler stopped")
+        if msg:
+            self._set_status(msg)
+        else:
+            self._set_status(self.language_controller.get("status.genaral.scheduler_stopped")) #
+
+        # Reset source buttons
         self._update_source_buttons_active(None)
+        self.scheduler.source = None
+        # Reset range buttons
+        self._update_range_buttons_active(None)
+        self.current_range = None
 
     def _update_start_btn(self):
         if self.scheduler.is_active():
-            self.ui.startButton.setText("Stop")
+            self.ui.startButton.setText(self.language_controller.get("settings.stopButton"))
             self.ui.startButton.setProperty("class", "primary")
             self.ui.startButton.style().unpolish(self.ui.startButton)
             self.ui.startButton.style().polish(self.ui.startButton)
         
         else:
-            self.ui.startButton.setText("Start")
+            self.ui.startButton.setText(self.language_controller.get("settings.startButton"))
             self.ui.startButton.setProperty("class", "ghost")
             self.ui.startButton.style().unpolish(self.ui.startButton)
             self.ui.startButton.style().polish(self.ui.startButton)
@@ -883,8 +919,8 @@ class TapeciarniaApp(QMainWindow):
     def _get_source_display_name(self, source):
         """Get display name for source"""
         source_names = {
-            str(FAVS_DIR): self.lang['settings']['favoriteWallpapersButton'],
-            str(SAVES_DIR): self.lang['settings']['myCollectionButton'],
+            str(FAVS_DIR): self.language_controller.get("settings.favoriteWallpapersButton"),
+            str(SAVES_DIR): self.language_controller.get("settings.myCollectionButton"),
             "super": "Super Wallpaper"
         }
         return source_names.get(source, "Custom Source")
@@ -901,7 +937,7 @@ class TapeciarniaApp(QMainWindow):
         
         if not os.path.exists(file_path):
             logging.error(f"Browsed file does not exist: {file_path}")
-            QMessageBox.warning(self, "Error", "Selected file does not exist.") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.file_not_exist_title"), self.language_controller.get("dialog.warning.file_not_exist_message")) #
             return
         
         # Update URL input
@@ -980,27 +1016,31 @@ class TapeciarniaApp(QMainWindow):
     def on_super_wallpaper(self):
         # """Super Wallpaper source"""
         # logging.info("Super Wallpaper source selected")
-        # self._set_status("Super Wallpaper source selected")
-        QMessageBox.information(self, "Super Wallpaper", 
-                            "Super Wallpaper feature - Premium curated wallpapers coming soon!") #
+        self.customMessageBox.information(self, self.language_controller.get("dialog.info.super_wallpaper_title"), self.language_controller.get("dialog.info.super_wallpaper_message") ) #
 
     def on_favorite_wallpapers(self):
         if not self.isLogin:
 
-            QMessageBox.information(
+            self.customMessageBox.information(
                 self,
-                "Favorites",
-                "Please login to access your favorite wallpapers",
-                QMessageBox.StandardButton.Ok
+                self.language_controller.get("dialog.info.no_login_fvrt_title"),
+                self.language_controller.get("dialog.info.no_login_fvrt_message"),
+                
             ) #
             return
         
         else:
+            # set scheduler source to FAVS_DIR
+            logging.info("Favorite Wallpapers source selected")
             self.scheduler.source = str(FAVS_DIR)
-            self._set_status("Scheduler set for Favorite Collection")
+            # update source buttons active state (fvorites)
             self._update_source_buttons_active(self.scheduler.source)
+            # update status
+            self._set_status(self.language_controller.get("status.genaral.scheduler_set_for_favorite_collection")) #
+            # updating range to wallpaper by default
             self.scheduler.set_range("wallpaper")
-            self._disable_other_range()
+            # disable other range buttons
+            # self._disable_other_range()
     
     def _disable_other_range(self):
         '''
@@ -1026,27 +1066,36 @@ class TapeciarniaApp(QMainWindow):
     def on_added_wallpapers(self):
         """My Collection source - includes ALL folders"""
         logging.info("My Collection source selected")
-        self._set_status("My Collection source selected")
         
         # has_favorites = FAVS_DIR.exists() and any(FAVS_DIR.iterdir())
         has_saves = SAVES_DIR.exists() and any(SAVES_DIR.iterdir())
         
         if not (has_saves):
             logging.warning("Empty collection - no wallpapers found")
-            QMessageBox.information(self, "Empty Collection", 
-                                "No wallpapers found in your collection. Download or add some wallpapers first.") #
+            self.customMessageBox.information(self, self.language_controller.get("dialog.info.collection_empty_title"),
+                                    self.language_controller.get("dialog.info.collection_empty_message")) #
             return
         
-        # Set scheduler to use Save files
+        # Set scheduler source to SAVES_DIR
         self.scheduler.source = str(SAVES_DIR)
         self._update_source_buttons_active(self.scheduler.source)
-        # updating range
-        self.scheduler.set_range("wallpaper")
-        self._update_range_buttons_active("wallpaper")
+        # updating range to all by default
+        self.scheduler.set_range("all")
+        self._update_range_buttons_active("all")
+        # enable other range buttons
         self._enable_other_range()
-
-        self._set_status("Scheduler set to use entire collection")
+        # upate status
+        self._set_status(self.language_controller.get("status.genaral.scheduler_set_to_use_entire_collection")) #
         logging.info("Scheduler set to use entire collection")
+
+    def get_range_button_text_by_type(self, range_type):
+        """Get range button text by type"""
+        range_texts = {
+            "all": self.language_controller.get("settings.rangeAllButton"),
+            "wallpaper": self.language_controller.get("settings.rangeWallpaperButton"),
+            "mp4": self.language_controller.get("settings.rangeMp4Button"),
+        }
+        return range_texts.get(range_type, "Unknown Range")
 
     # Range selection
     def on_range_changed(self, range_type):
@@ -1056,28 +1105,48 @@ class TapeciarniaApp(QMainWindow):
         self.scheduler.set_range(range_type)
 
         # Check if current source + range combination has files
-        if self.scheduler.source:
+        if self.scheduler.source == str(SAVES_DIR):
             available_files = self.scheduler._get_media_files()
             if not available_files:
                 # Warn user but don't prevent the change
-                logging.warning(f"No files found for source: {self.scheduler.source}, range: {range_type}")
-                self._set_status(f"Range set to {range_type} (no files found)")
+                logging.warning(f"No files found for source: {self.scheduler.source}, range: {self.get_range_button_text_by_type(range_type)}")
+                self._set_status(self.language_controller.get("status.genaral.range").format(range_type=self.get_range_button_text_by_type(range_type))) #
             else:
-                self._set_status(f"Range set to: {range_type} ({len(available_files)} files)")
+                self._set_status(self.language_controller.get("status.genaral.range_with_file").format(self.get_range_button_text_by_type(range_type),len(available_files))) #
         else:
-            self._set_status(f"Range set to: {range_type}")
+            self._set_status(self.language_controller.get("status.genaral.range_with_range_type").format(range_type=self.get_range_button_text_by_type(range_type))) #
 
         self._update_range_buttons_active(range_type)
         self.config.set_range_preference(range_type)
         logging.debug(f"Range preference saved: {range_type}")
 
-    # Scheduler controls
     def on_scheduler_toggled(self):
         """Handle scheduler enable/disable"""
-        isEnable = self.ui.enabledCheck.isChecked()
-        self.config.set_scheduler_enabled(isEnable)
-        # Update UI visibility
+
+        if self.scheduler.is_active():
+            logging.info("Scheduler is active, toggle ignored")
+
+            title = self.language_controller.get("dialog.info.scheduler_active_title")
+            message = self.language_controller.get("dialog.info.scheduler_active_message")
+
+            self.ui.enabledCheck.blockSignals(True)
+            self.ui.enabledCheck.setChecked(True)
+            self.ui.enabledCheck.blockSignals(False)
+
+            self.customMessageBox.information(self, title, message)
+            return
+
+        # User clicked the checkbox
+        isEnabled = self.ui.enabledCheck.isChecked()
+        self.config.set_scheduler_enabled(isEnabled)
+
+        # THIS was causing the second popup — now safe
         self._update_scheduler_ui_state()
+        # update status
+        if isEnabled:
+            self._set_status(self.language_controller.get("status.genaral.scheduler_enabled")) #
+        else:
+            self._set_status(self.language_controller.get("status.genaral.scheduler_disabled")) #
 
     def _on_interval_changed(self, val):
         """Handle interval change"""
@@ -1089,35 +1158,45 @@ class TapeciarniaApp(QMainWindow):
         # self._set_status(f"Scheduler interval: {val} min")
     
     def update_ui_language(self):
-        self.ui.emailInput.setPlaceholderText(f"{self.lang['auth']['emailPlaceholder']}")
-        self.ui.passwordInput.setPlaceholderText(f"{self.lang['auth']['passwordPlaceholder']}")
-        self.ui.logInBnt.setText(f"{self.lang['auth']['logInButton']}")
+        self.ui.emailInput.setPlaceholderText(f"{self.language_controller.get("auth.emailPlaceholder")}")
+        self.ui.passwordInput.setPlaceholderText(f"{self.language_controller.get("auth.passwordPlaceholder")}")
+        
+        if self.isLogin:
+            self.ui.logInBnt.setText(f"{self.language_controller.get("auth.logOutButton")}")
+        else:
+            self.ui.logInBnt.setText(f"{self.language_controller.get("auth.logInButton")}")
+            
+        if self.scheduler.is_active():
+            self.ui.startButton.setText(f"{self.language_controller.get("settings.stopButton")}")
+        else:
+            self.ui.startButton.setText(f"{self.language_controller.get("settings.startButton")}")
+            
         # main controls
-        self.ui.randomAnimButton.setText(f"  {self.lang['navigation']['shuffleAnimatedButton']}")
-        self.ui.randomButton.setText(f"  {self.lang['navigation']['shuffleWallpaperButton']}")
-        self.ui.browseButton.setText(f"  {self.lang['navigation']['browseWallpapersButton']}")
+        self.ui.randomAnimButton.setText(f" {self.language_controller.get("navigation.shuffleAnimatedButton")}")
+        self.ui.randomButton.setText(f" {self.language_controller.get("navigation.shuffleWallpaperButton")}")
+        self.ui.browseButton.setText(f" {self.language_controller.get("navigation.browseWallpapersButton")}")
         # uploadSection
-        self.ui.add_file_label.setText(f"  {self.lang['uploadSection']['addFilesHeader']}")
-        # self.ui.uploadText.setText(self.lang["uploadSection"]["dragDropInstruction"]) 
-        # self.ui.uploadSupported.setText(self.lang["uploadSection"]["supportedFormatsHint"])
+        self.ui.add_file_label.setText(f" {self.language_controller.get("uploadSection.addFilesHeader")}")
+        # self.ui.uploadText.setText(self.language_controller.get("uploadSection.dragDropInstruction")) 
+        # self.ui.uploadSupported.setText(self.language_controller.get("uploadSection.supportedFormatsHint"))
         # url loader
-        self.ui.url_loader_text_label.setText(f"  {self.lang['uploadSection']['imagesOrVideoURLHeader']}")
-        self.ui.loadUrlButton.setText(f"{self.lang['uploadSection']['loadButton']}")
-        self.ui.url_helper_text_label.setText(f"  {self.lang['uploadSection']['urlHelperText']}")
+        self.ui.url_loader_text_label.setText(f" {self.language_controller.get("uploadSection.imagesOrVideoURLHeader")}")
+        self.ui.loadUrlButton.setText(f"{self.language_controller.get("uploadSection.loadButton")}")
+        self.ui.url_helper_text_label.setText(f" {self.language_controller.get("uploadSection.urlHelperText")}")
         # settings
-        self.ui.autoLabel.setText(f"  {self.lang['settings']['autoChangeHeader']}")
-        self.ui.enabledCheck.setText(f"  {self.lang['settings']['enabledLabel']}")
-        self.ui.inverval_lable.setText(f"  {self.lang['settings']['intervalLabel']}")
-        self.ui.wallpaper_source_lable.setText(f"  {self.lang['settings']['wallpaperSourceLabel']}")
-        self.ui.super_wallpaper_btn.setText(f"  {self.lang['settings']['superWallpaperButton']}")
-        self.ui.fvrt_wallpapers_btn.setText(f"  {self.lang['settings']['favoriteWallpapersButton']}")
-        self.ui.added_wallpaper_btn.setText(f"  {self.lang['settings']['myCollectionButton']}")
-        self.ui.range_lable.setText(f"  {self.lang['settings']['rangeHeader']}")
-        self.ui.range_all_bnt.setText(f"  {self.lang['settings']['rangeAllButton']}")
-        self.ui.range_wallpaper_bnt.setText(f"  {self.lang['settings']['rangeWallpaperButton']}")
-        self.ui.range_mp4_bnt.setText(f"  {self.lang['settings']['rangeMp4Button']}")
-        self.ui.startButton.setText(f"  {self.lang['settings']['startButton']}")
-        self.ui.resetButton.setText(f"  {self.lang['settings']['resetButton']}")
+        self.ui.autoLabel.setText(f" {self.language_controller.get("settings.autoChangeHeader")}")
+        self.ui.enabledCheck.setText(f" {self.language_controller.get("settings.enabledLabel")}")
+        self.ui.inverval_lable.setText(f" {self.language_controller.get("settings.intervalLabel")}")
+        self.ui.wallpaper_source_lable.setText(f" {self.language_controller.get("settings.wallpaperSourceLabel")}")
+        self.ui.super_wallpaper_btn.setText(f" {self.language_controller.get("settings.superWallpaperButton")}")
+        self.ui.fvrt_wallpapers_btn.setText(f" {self.language_controller.get("settings.favoriteWallpapersButton")}")
+        self.ui.added_wallpaper_btn.setText(f" {self.language_controller.get("settings.myCollectionButton")}")
+        self.ui.range_lable.setText(f" {self.language_controller.get("settings.rangeHeader")}")
+        self.ui.range_all_bnt.setText(f" {self.language_controller.get("settings.rangeAllButton")}")
+        self.ui.range_wallpaper_bnt.setText(f" {self.language_controller.get("settings.rangeWallpaperButton")}")
+        self.ui.range_mp4_bnt.setText(f" {self.language_controller.get("settings.rangeMp4Button")}")
+        self.ui.resetButton.setText(f" {self.language_controller.get("settings.resetButton")}")
+        
 
     def set_buttons(self,enabled: bool):
         logging.debug(f"Toggleing buttons: {enabled}")
@@ -1139,7 +1218,7 @@ class TapeciarniaApp(QMainWindow):
             self._stop_scheduler()
 
         if not is_connected_to_internet:
-            self._set_status("Unable to connect to the server.Please check your connection")
+            self._set_status(self.language_controller.get("status.genaral.unable_to_connect")) #
             return
         # Disable buttons during processing
         self.set_buttons(False)
@@ -1148,7 +1227,7 @@ class TapeciarniaApp(QMainWindow):
         logging.info(f"Applying input: {text}")
 
         if not text:
-            QMessageBox.warning(self, "Warning", "Please enter a valid URL or file path.") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.invalid_path_title"), self.language_controller.get("dialog.warning.invalid_path_message")) #
             self.set_buttons(True)
             return
         
@@ -1157,15 +1236,15 @@ class TapeciarniaApp(QMainWindow):
         validated = validate_url_or_path(text)
         if not validated:
             logging.warning(f"Input not recognized: {text}")
-            QMessageBox.warning(self, "Error", f"Input not recognized: {text}") #
+            self.customMessageBox.warning(self, "Error", f"Input not recognized: {text}") #
             self.set_buttons(True)
 
         if is_tapeciarnia_redirect_url(validated):
             logging.info(f"Tapeciarnia redirect url found: {validated}")
             validated = fast_resolve_tapeciarnia_redirect(validated)
             if not validated:
-                QMessageBox.warning(self, "Unsupported URL",
-                    "The URL doesn't appear to be a supported image or video.") #
+                self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
+                    self.language_controller.get("dialog.warning.unsupported_url_message")) #
                 return            
 
         p = Path(validated)
@@ -1186,8 +1265,8 @@ class TapeciarniaApp(QMainWindow):
             elif media_type == "video":
                 self._handle_remote_video(validated)
             else:
-                QMessageBox.warning(self, "Unsupported URL",
-                                    "The URL doesn't appear to be a supported image or video.") #
+                self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
+                    self.language_controller.get("dialog.warning.unsupported_url_message")) #
             self.set_buttons(True)
             return
     
@@ -1195,7 +1274,8 @@ class TapeciarniaApp(QMainWindow):
 
             # -------- Fallback --------
             logging.warning(f"Unsupported input type: {text}")
-            QMessageBox.warning(self, "Unsupported URL", "The URL doesn't appear to be a supported image or video.") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
+                    self.language_controller.get("dialog.warning.unsupported_url_message")) #
             self.set_buttons(True)
 
 
@@ -1210,7 +1290,8 @@ class TapeciarniaApp(QMainWindow):
             self._apply_image(str(file_path))
         else:
             logging.warning(f"Unsupported local file type: {file_path.suffix}")
-            QMessageBox.warning(self, "Unsupported file", "Unsupported local file type.") #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_file_title"),
+                    self.language_controller.get("dialog.warning.unsupported_file_message")) #
 
 
     def _handle_remote_image(self, url: str):
@@ -1235,7 +1316,7 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Image download setup failed: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Image download setup failed: {e}") #
+            self.customMessageBox.critical(self, "Error", f"Image download setup failed: {e}") #
 
     def _on_image_download_done(self, file_path: str):
         """Handle completion of image download"""
@@ -1245,7 +1326,7 @@ class TapeciarniaApp(QMainWindow):
     def _handle_remote_video(self, url: str):
         """Handle remote video download - for direct video links"""
         logging.info(f"Downloading remote video: {url}")
-        self._set_status("Downloading video...")
+        self._set_status(self.language_controller.get("status.genaral.downloading_video")) #
         cleanup_temp_marker()
         self._handle_direct_video_download(url)
 
@@ -1263,10 +1344,10 @@ class TapeciarniaApp(QMainWindow):
             logging.info(f"Downloading to: {download_path}")
             
             # Start download in a thread to avoid blocking UI
-            self.direct_download_thread = DirectDownloadThread(url, str(download_path))
+            self.direct_download_thread = VideoDownloadThread(url, str(download_path))
             self.direct_download_thread.progress.connect(
                 lambda percent, status: (
-                    self._set_status(status)
+                    self._set_status(f"Downloading {status}")
                 )
             )
             self.direct_download_thread.error.connect(self._on_download_error)
@@ -1277,7 +1358,7 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Direct download setup failed: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Download setup failed: {e}") #
+            self.customMessageBox.critical(self, "Error", f"Download setup failed: {e}") #
 
     def _on_direct_video_download_done(self, file_path: str):
         """Handle completion of direct video download - FIXED to not set wallpaper on failure"""
@@ -1344,11 +1425,11 @@ class TapeciarniaApp(QMainWindow):
             # Final validation before processing
             if not downloaded_file_path.exists():
                 logging.error("File disappeared during destination selection")
-                QMessageBox.critical(
+                self.customMessageBox.critical(
                     self,
                     "File Error", 
                     "The file is no longer available. Operation cancelled.",
-                    QMessageBox.StandardButton.Ok
+                    
                 ) #
                 return
             
@@ -1356,11 +1437,11 @@ class TapeciarniaApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Error processing destination: {e}")
-            QMessageBox.critical(
+            self.customMessageBox.critical(
                 self,
                 "Error",
                 f"Failed to process file: {str(e)}",
-                QMessageBox.StandardButton.Ok
+                
             ) #no need
 
 
@@ -1375,7 +1456,7 @@ class TapeciarniaApp(QMainWindow):
         except Exception as e:
             logging.error(f"Failed to process downloaded file: {e}")
             logger.error(f"Failed to add file: {str(e)}")
-            # QMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
+            # self.customMessageBox.critical(self, "Error", f"Failed to add file: {str(e)}")
 
 
     def _apply_wallpaper_from_path(self, file_path: Path):
@@ -1396,7 +1477,8 @@ class TapeciarniaApp(QMainWindow):
             if image_data:
                 path = conver_bytes_to_tmp_path(image_data.get("data"))
                 self.controller.start_image(path)
-                self._set_status(f"Applied wallpaper: {gen_name_from_url(image_data.get("url"))}")
+                self._set_status(self.language_controller.get("status.genaral.image_applied").format(gen_name_from_url(image_data.get("url")))) #
+                self._update_url_input(image_data.get("url"))
         else:
             pass
                 
@@ -1408,14 +1490,14 @@ class TapeciarniaApp(QMainWindow):
             logging.info(f"Applying video wallpaper: {video_path}")
             self.controller.start_video(video_path)
             self.config.set_last_video(video_path)
-            self._set_status(f"Playing video: {Path(video_path).name}")
+            self._set_status(self.language_controller.get("status.genaral.playing_video").format({Path(video_path).name})) #
             self._update_url_input(video_path)
             logging.info(f"Video wallpaper applied successfully: {Path(video_path).name}")
             self.set_buttons(True)
         except Exception as e:
             self.set_buttons(True)
             logging.error(f"Failed to play video: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to play video: {e}") #
+            self.customMessageBox.critical(self, "Error", f"Failed to play video: {e}") #
 
     def _apply_image(self, image_path: str):
         """Apply image wallpaper with fade effect - FIXED for null pixmap"""
@@ -1439,7 +1521,8 @@ class TapeciarniaApp(QMainWindow):
             self.controller.start_image(image_path)
             self.config.set_last_video(image_path)
             
-            self._set_status(f"Image applied: {Path(image_path).name}")
+            self._set_status(self.language_controller.get("status.genaral.image_applied").format(Path(image_path).name)) #
+
             self._update_url_input(image_path)
             logging.info(f"Image wallpaper applied: {Path(image_path).name}")
             self.set_buttons(True)
@@ -1452,11 +1535,11 @@ class TapeciarniaApp(QMainWindow):
                 logging.info("Attempting direct image application without fade")
                 self.controller.start_image(image_path)
                 self.config.set_last_video(image_path)
-                self._set_status(f"Image applied (no fade): {Path(image_path).name}")
+                self._set_status(self.language_controller.get("status.genaral.image_applied").format(Path(image_path).name)) #
                 self._update_url_input(image_path)
             except Exception as fallback_error:
                 logging.error(f"Fallback image application also failed: {fallback_error}")
-                QMessageBox.critical(self, "Error", f"Failed to apply image: {fallback_error}") #
+                self.customMessageBox.critical(self, "Error", f"Failed to apply image: {fallback_error}") #
 
     # Utility methods - FIXED: Proper media type separation
     def _get_media_files(self, media_type="all"):
@@ -1484,11 +1567,11 @@ class TapeciarniaApp(QMainWindow):
         
         # Define extensions based on media type
         if media_type == "mp4":
-            extensions = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
+            extensions = tuple(self.config.get_valid_video_extensions())
         elif media_type == "wallpaper":
-            extensions = ('.jpg', '.jpeg', '.png', '.gif')
+            extensions = tuple(self.config.get_valid_image_extensions())
         else:
-            extensions = ('.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mkv', '.webm', '.avi', '.mov')
+            extensions = tuple(self.config.get_all_valid_extensions())
         
         for folder in search_folders:
             if folder.exists():
@@ -1565,21 +1648,21 @@ class TapeciarniaApp(QMainWindow):
     def _perform_reset_with_confirmation(self):
         """Reset to default wallpaper WITH confirmation"""
         logging.info("Reset with confirmation triggered")
-        reply = QMessageBox.question(
+        reply = self.customMessageBox.question(
             self,
-            self.lang["dialog"]["confirm_reset_title"],
-            self.lang["dialog"]["confirm_reset_dia"],
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            self.language_controller.get("dialog.qustions.confirm_reset_title"),
+            self.language_controller.get("dialog.qustions.confirm_reset_dia"),
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == 2:
             logging.info("User confirmed reset")
             self._perform_reset()
-            self._set_status("Reset completed successfully")
+            self._set_status(self.language_controller.get("status.genaral.reset_completed_successfully"))
+            
         else:
             logging.info("User cancelled reset")
-            self._set_status("Reset cancelled")
+            self._set_status(self.language_controller.get("status.genaral.reset_cancelled"))
+           
     
 
     def download_and_set_online_wallpaper(self, url: str, is_animated: bool):
@@ -1604,7 +1687,7 @@ class TapeciarniaApp(QMainWindow):
             
             # Start download thread
             if is_animated:
-                self.download_thread = DirectDownloadThread(url, str(download_path))
+                self.download_thread = VideoDownloadThread(url, str(download_path))
             else:
                 self.download_thread = ImageDownloadThread(url, str(download_path))
             
@@ -1649,9 +1732,8 @@ class TapeciarniaApp(QMainWindow):
         try:
             logging.info(f"Setting online wallpaper: {file_path}")
             self._apply_wallpaper_from_path(Path(file_path))
-            self._set_status(f"Online {'animated' if is_animated else 'static'} wallpaper set")
-            
-            
+
+            self._set_status(self.language_controller.get("status.genaral.online_wallpaper_set").format(Path(file_path).name)) #
             logging.info("Online wallpaper set successfully")
             
         except Exception as e:
@@ -1680,11 +1762,10 @@ class TapeciarniaApp(QMainWindow):
         logging.warning(f"Falling back to local shuffle for {'animated' if is_animated else 'static'}")
         
         # Show warning message
-        QMessageBox.warning(
+        self.customMessageBox.warning(
             self,
-            "Online Unavailable",
-            "Could not fetch online wallpaper. Using local collection instead.",
-            QMessageBox.StandardButton.Ok
+            self.language_controller.get("dialog.warning.offile_shuffle_title"),
+            self.language_controller.get("dialog.warning.offile_shuffle_message")
         ) #
         
         # Use local shuffle
@@ -1702,10 +1783,10 @@ class TapeciarniaApp(QMainWindow):
         
         if not video_files:
             logging.warning("No local animated wallpapers found")
-            QMessageBox.information(
+            self.customMessageBox.information(
                 self, 
-                "No Videos", 
-                "No animated wallpapers found in your local collection."
+                self.language_controller.get("dialog.info.no_video_found_in_local_title"),
+                self.language_controller.get("dialog.info.no_video_found_in_local_message")
             ) #
             self._update_shuffle_button_states(None)
             self.current_shuffle_type = None
@@ -1730,10 +1811,10 @@ class TapeciarniaApp(QMainWindow):
         
         if not image_files:
             logging.warning("No local static wallpapers found")
-            QMessageBox.information(
+            self.customMessageBox.information(
                 self, 
-                "No Images", 
-                "No wallpapers found in your local collection."
+                self.language_controller.get("dialog.info.no_wallpaper_found_in_local_title"),
+                self.language_controller.get("dialog.info.no_wallpaper_found_in_local_message")
             )
             self._update_shuffle_button_states(None)
             self.current_shuffle_type = None
@@ -1752,8 +1833,8 @@ class TapeciarniaApp(QMainWindow):
     def _on_download_error(self, error_msg: str):
         """Handle download errors"""
         logging.error(f"Download error: {error_msg}")
-        QMessageBox.critical(self, "Download Error", error_msg) #
-        self._set_status(f"Download failed: {error_msg}")
+        self.customMessageBox.critical(self, "Download Error", error_msg) #
+        self._set_status(self.language_controller.get("status.genaral.download_failed")) #
         self.set_buttons(True)
 
     # Settings management
@@ -1766,18 +1847,18 @@ class TapeciarniaApp(QMainWindow):
         #     self.ui.urlInput.setText(last_video)
         #     logging.info(f"Loaded last video from config: {last_video}")
 
-        # Load range preference
-        self.current_range = self.config.get_range_preference()
-        self.scheduler.set_range(self.current_range)
-        self._update_range_buttons_active(self.current_range)
-        logging.info(f"Loaded range preference: {self.current_range}")
-
         # Load scheduler settings
         enabled ,source, interval, range_type = self.config.get_scheduler_settings()
+
+        # Load range preference
+        logging.info(f"Loaded range preference: {range_type}")
+        self.scheduler.set_range(range_type)
+        self._update_range_buttons_active(range_type)
+        self.current_range = range_type
+        # Load interval and enabled state
         enabled = self.config.get_scheduler_enabled()
         self.ui.enabledCheck.setChecked(enabled)
-
-        self.scheduler.source = source
+    
         self.scheduler.interval_minutes = interval
         self.scheduler.range_type = range_type
 
@@ -1787,14 +1868,34 @@ class TapeciarniaApp(QMainWindow):
         # if hasattr(self.ui, "enabledCheck"):
         #     self.ui.enabledCheck.setChecked(True)
 
-        # Set the collection button
-        if source == str(SAVES_DIR):
-            self._update_source_buttons_active(source)
-        
-        elif source == str(FAVS_DIR) and self.isLogin:
-            self._update_source_buttons_active(source)
+        # souce can be none or path
+
+        if source != None:
+            # Set the collection button
+            if source == str(SAVES_DIR):
+                self._update_source_buttons_active(source)
+
+            elif source == "super":
+                self._update_source_buttons_active(source)
+                self.scheduler.source = "super"
+
+            elif source == str(FAVS_DIR):
+                if self.isLogin:
+                    self._update_source_buttons_active(source)
+                else:
+                    self.scheduler.source = str(SAVES_DIR)
+                    self._update_source_buttons_active(str(SAVES_DIR))
+
+            else:
+                logger.warning(f"Unknown scheduler source: {source}, defaulting to None")
+                self._update_source_buttons_active(None)
+                
         else:
+            logging.info("No scheduler source set, defaulting to None")
             self._update_source_buttons_active(None)
+            
+            
+
 
         
         logging.info(f"Loaded scheduler settings - source: {source}, range: {range_type}, interval: {interval}, enabled: {enabled}")
@@ -1814,7 +1915,7 @@ class TapeciarniaApp(QMainWindow):
         # Check if system tray is available
         if not QSystemTrayIcon.isSystemTrayAvailable():
             logging.error("System tray is not available on this system")
-            QMessageBox.critical(None, "System Tray", "System tray is not available on this system.") #
+            self.customMessageBox.critical(None, self.language_controller.get("dialog.critical.sytsem_tray_unavailable_title"), self.language_controller.get("dialog.critical.sytsem_tray_unavailable_message")) #
             return
         
         # Create tray icon
@@ -1899,17 +2000,16 @@ class TapeciarniaApp(QMainWindow):
                 login = LoginWorker(url=url, payload=payload,method="GET")
                 login.success.connect(self._on_login_success)
                 login.failed.connect(lambda e: self._on_login_failed(data=e,login_worker=login))
-                self._set_status("Logging in...")
+                self._set_status(self.language_controller.get("status.genaral.logging_in")) #
                 login.start()
 
             else:
-                self._set_status("Invalid credential")
+                self._set_status(self.language_controller.get("status.genaral.invalid_credential")) #
                 self.ui.logInBnt.setEnabled(True)  
-                QMessageBox.information(
+                self.customMessageBox.information(
                     self,
-                    "Invalid credential",
-                    "Please enter valid credentials",
-                    QMessageBox.StandardButton.Ok
+                    self.language_controller.get("dialog.info.invalide_login_info_title"),
+                    self.language_controller.get("dialog.info.invalide_login_info_message"),
                 ) #
 
         else:
@@ -1933,41 +2033,40 @@ class TapeciarniaApp(QMainWindow):
 
             self.config.set_login_key(data.get("key"))
             self.config.set_login(data.get("login"))
-            self._set_status("Login successfull")
-            QMessageBox.information(
+            self._set_status(self.language_controller.get("status.genaral.login_successfull")) #
+            self.customMessageBox.information(
                 self,
-                "Log in successfull",
-                f"Welcome back {data.get('login')}",
+                self.language_controller.get("dialog.info.login_successfull_title"),
+                f"{self.language_controller.get("dialog.info.login_successfull_message")} {data.get('login')}",
                 # str(data),
-                QMessageBox.StandardButton.Ok
             ) #
             logging.info("Login successfull")
 
             # hide the input areas and change the text on log in bnt to log out
         
         else:
-            QMessageBox.information(
+            self._set_status(self.language_controller.get("status.genaral.login_failed")) #
+            self.customMessageBox.information(
                 self,
-                "Log in faild",
-                str(data),
-                QMessageBox.StandardButton.Ok
+                self.language_controller.get("dialog.info.login_failed_title"),
+                self.language_controller.get("dialog.info.login_failed_message"),
             ) #
-            logging.info("Logging failed")
+            logging.info("Login failed")
 
     
 
     
     def _on_login_failed(self,data,login_worker:LoginWorker):
         self.ui.logInBnt.setEnabled(True)
-        QMessageBox.information(
+        self.customMessageBox.information(
             self,
             "Log in faild",
             str(data),
-            QMessageBox.StandardButton.Ok
+
         ) #
         logging.info("Logging failed")
         login_worker.stop()
-        self._set_status("Login Failed")
+        self._set_status(self.language_controller.get("status.genaral.login_failed")) #
         logging.warning(f"Logging in failed: {data}")
 
     def handle_log_out(self):
@@ -1981,11 +2080,20 @@ class TapeciarniaApp(QMainWindow):
         self.config.clear_session()
         self._setLogInState()
         self.ui.urlInput.clear()
-        self._set_status("Logout successfull")
+        self._set_status(self.language_controller.get("status.genaral.logout_successfull")) #
         self.ui.passwordInput.clear()
 
         if self.scheduler.is_active() and self.scheduler.source == str(FAVS_DIR):
             self._stop_scheduler()
+            logging.info("User logged out successfully")    
+            # Switch source to SAVES_DIR
+            self.scheduler.source = str(SAVES_DIR)
+            self._update_source_buttons_active(str(SAVES_DIR))
+            # reset range to all
+            self.scheduler.range_type = "all"
+            self._update_range_buttons_active("all")
+            self.config.set_scheduler_settings(enabled=True,source=self.scheduler.source,interval=self.scheduler.interval_minutes,range_type=self.scheduler.range_type)
+            
 
 
     def _handel_mouse_press_username(self,e):
@@ -2004,15 +2112,14 @@ class TapeciarniaApp(QMainWindow):
     def _exit_app(self):
         """Properly quit the application from tray menu with confirmation and progress"""
         logging.info("Exit from tray menu triggered")
-        reply = QMessageBox.question(
+        reply = self.customMessageBox.question(
             self,
-            self.lang["dialog"]["confirm_exit_title"],
-            self.lang["dialog"]["confirm_exit_dialog"],
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            self.language_controller.get("dialog.qustions.confirm_exit_title"),
+            self.language_controller.get("dialog.qustions.confirm_exit_dialog"),
+
         )
 
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == 2:
             logging.info("User confirmed exit from tray")
             # Show shutdown progress for tray exit too
             self._show_shutdown_progress_from_tray()
@@ -2040,16 +2147,14 @@ class TapeciarniaApp(QMainWindow):
                     logging.info(f"Executing standard setwallpaper command for URL: {wallpaper_url}")
                     
                     # Show a confirmation message to the user
-                    reply = QMessageBox.question(
+                    reply = self.customMessageBox.question(
                         self,
-                        "Confirm Wallpaper Change",
-                        f"Do you want to set the wallpaper from this URI?\n\n{wallpaper_url}",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No
+                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
+                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}",
                     )
                     
                     # FIX: Add the missing execution logic (same as other actions)
-                    confirmed = reply == QMessageBox.StandardButton.Yes
+                    confirmed = reply 
                     self.last_uri_command = {
                         "action": action,
                         "url": wallpaper_url,
@@ -2061,16 +2166,16 @@ class TapeciarniaApp(QMainWindow):
                     if confirmed:
                         try:
                             self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status("Applying wallpaper from URI...")
+                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
+                            self.customMessageBox.critical(self, self.language_controller.get("dialog.critical.failed_uri_title"), self.language_controller.get("dialog.critical.failed_uri_message") ) #
                     else:
-                        self._set_status("Wallpaper change from URI was cancelled by user")
+                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
                 else:
                     logging.error("setwallpaper action received, but 'url' parameter is missing.")
-                    # QMessageBox.warning(self, "URI Error", "The 'setwallpaper' command is missing the required URL parameter.")
+                    # self.customMessageBox.warning(self, "URI Error", "The 'setwallpaper' command is missing the required URL parameter.")
 
 
             elif action == "mp4_url":
@@ -2083,16 +2188,14 @@ class TapeciarniaApp(QMainWindow):
                     # e.g., self.controller.start_video_wallpaper(wallpaper_url)
                     
                     self.ui.urlInput.setText(wallpaper_url)
-                    reply = QMessageBox.question(
+                    reply = self.customMessageBox.question(
                         self,
-                        "Confirm Wallpaper Change",
-                        f"Do you want to set the wallpaper from this URI?\n\n{wallpaper_url}",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No
-                    )
+                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
+                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}"
+                        )
 
                     # store the user's decision for later inspection or logging
-                    confirmed = reply == QMessageBox.StandardButton.Yes
+                    confirmed = reply
                     self.last_uri_command = {
                         "action": action,
                         "url": wallpaper_url,
@@ -2105,13 +2208,14 @@ class TapeciarniaApp(QMainWindow):
                         # proceed to apply the wallpaper (reuse existing input handling)
                         try:
                             self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status("Applying wallpaper from URI...")
+                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
+                            self.customMessageBox.critical(self, self.language_controller.get("diolog.warning.failed_uri_title"), self.language_controller.get("diolog.warning.failed_uri_message"))
+                        
                     else:
-                        self._set_status("Wallpaper change from URI was cancelled by user")
+                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
 
             elif action == "set_url_default":
                 # Handles: tapeciarnia:https://image.jpg (Custom default action for static image)
@@ -2122,16 +2226,14 @@ class TapeciarniaApp(QMainWindow):
                     # This handles the simple image URLs (e.g., .jpg, .png)
                     # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
                     
-                    reply = QMessageBox.question(
+                    reply = self.customMessageBox.question(
                         self,
-                        "Confirm Wallpaper Change",
-                        f"Do you want to set the wallpaper from this URI?\n\n{wallpaper_url}",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No
+                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
+                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}",
                     )
                     
                     # Store the user's decision
-                    confirmed = reply == QMessageBox.StandardButton.Yes
+                    confirmed = reply 
                     self.last_uri_command = {
                         "action": action,
                         "url": wallpaper_url,
@@ -2143,17 +2245,17 @@ class TapeciarniaApp(QMainWindow):
                     if confirmed:
                         try:
                             self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status("Applying static wallpaper from URI...")
+                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
+                            self.customMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
                     else:
-                        self._set_status("Wallpaper change from URI was cancelled by user")
+                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
                         
                 else:
                     logging.error("set_url_default action received, but 'url' parameter is missing.")
-                    # QMessageBox.warning(self, "URI Error", "The command is missing the required URL parameter.")
+                    # self.customMessageBox.warning(self, "URI Error", "The command is missing the required URL parameter.")
 
             elif action == "openfavorites":
                 logging.info("Executing openfavorites command.")
@@ -2161,18 +2263,18 @@ class TapeciarniaApp(QMainWindow):
                     folder = get_folder_for_source("favorites")
                     if not folder.exists():
                         logging.warning(f"Favorites folder does not exist: {folder}")
-                        QMessageBox.warning(self, "Folder Not Found", f"The favorites folder does not exist:\n{folder}") #
+                        self.customMessageBox.warning(self, "Folder Not Found", f"The favorites folder does not exist:\n{folder}") #
                     else:
                         success = open_folder_in_explorer(folder)
                         if success:
                             self._set_status("Opened Favorites folder")
-                            QMessageBox.information(self, "Opened Favorites", f"Opened favorites folder:\n{folder}") # no need
+                            self.customMessageBox.information(self, "Opened Favorites", f"Opened favorites folder:\n{folder}") # no need
                         else:
                             logging.error(f"Failed to open favorites folder in explorer: {folder}")
-                            QMessageBox.warning(self, "Open Failed", f"Could not open folder in file explorer:\n{folder}") #
+                            self.customMessageBox.warning(self, "Open Failed", f"Could not open folder in file explorer:\n{folder}") #
                 except Exception as e:
                     logging.error(f"Failed to open favorites folder: {e}", exc_info=True)
-                    QMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}") #no need
+                    self.customMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}") #no need
             
             elif action == "id":
                 
@@ -2188,16 +2290,14 @@ class TapeciarniaApp(QMainWindow):
                     # This handles the simple image URLs (e.g., .jpg, .png)
                     # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
                     
-                    reply = QMessageBox.question(
+                    reply = self.customMessageBox.question(
                         self,
-                        "Confirm Wallpaper Change",
-                        f"Do you want to set the wallpaper from this URI?\n\ntapeciarnia:{image_id}",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No
+                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
+                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\ntapeciarnia:{image_id}",
                     )
                     
                     # Store the user's decision
-                    confirmed = reply == QMessageBox.StandardButton.Yes
+                    confirmed = reply 
                     self.last_uri_command = {
                         "action": action,
                         "url": wallpaper_url,
@@ -2209,21 +2309,21 @@ class TapeciarniaApp(QMainWindow):
                     if confirmed:
                         try:
                             self.ui.urlInput.setText(f"tapeciarnia:{image_id}")
-                            self._set_status("Applying static wallpaper from URI...")
+                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
                             self._apply_input_string(wallpaper_url)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            # QMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                            # self.customMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
                     else:
-                        self._set_status("Wallpaper change from URI was cancelled by user")
+                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
                         
                 else:
                     logging.error("id action received, but 'id' parameter is missing.")
-                    # QMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
+                    # self.customMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
 
 
 
             else:
                 logging.warning(f"Unknown URI action received: {action}")
-                # QMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")
+                # self.customMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")
 

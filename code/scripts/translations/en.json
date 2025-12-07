@@ -4,12 +4,17 @@
         "auth": {
             "emailPlaceholder": "email",
             "passwordPlaceholder": "password",
-            "logInButton": "Log in"
+            "logInButton": "Log in",
+            "logOutButton": "Log out"
         },
         "navigation": {
             "shuffleAnimatedButton": "Shuffle animated",
             "shuffleWallpaperButton": "Shuffle wallpaper",
-            "browseWallpapersButton": "Browse wallpapers"
+            "browseWallpapersButton": "Browse wallpapers",
+            "yes": "Yes",
+            "no": "No",
+            "cancel": "Cancel",
+            "ok": "OK"
         },
         "uploadSection": {
             "addFilesHeader": "Add files",
@@ -21,7 +26,10 @@
             "setAsWallpaperButton": "Set as Wallpaper",
             "selected_text": "Selected",
             "addToCollectionButton": "Add to Collection",
-            "addToFavoritesButton": "Add to Favorites"
+            "addToFavoritesButton": "Add to Favorites",
+            "wallpaper_set_success": "Wallpaper set successfully",
+            "image_ready": "Image ready",
+            "video_ready": "Video ready"
         },
         "settings": {
             "autoChangeHeader": "Automatic wallpaper change",
@@ -37,7 +45,8 @@
             "rangeMp4Button": "Mp4",
             "schedulerStoppedStatus": "Scheduler stopped",
             "startButton": "Start",
-            "resetButton": "Reset"
+            "resetButton": "Reset",
+            "stopButton": "Stop"
         },
         "dialog": {
             "info": {
@@ -60,7 +69,9 @@
                 "reset_success_title": "Reset Successful",
                 "reset_success_message": "All wallpapers have been stopped and settings have been reset to default.\n\nYour original wallpaper has been restored.",
                 "icon_tray_title": "Tapeciarnia is still running",
-                "icon_tray_message": "Tapeciarnia is minimized to the system tray. Right-click the tray icon to restore or exit."
+                "icon_tray_message": "Tapeciarnia is minimized to the system tray. Right-click the tray icon to restore or exit.",
+                "scheduler_active_title": "Scheduler running",
+                "scheduler_active_message": "Cannot change enabled state while scheduler is running. Please stop the scheduler first."
             },
             "qustions": {
                 "confirm_reset_title": "Confirm Reset",
@@ -113,7 +124,56 @@
             }
         },
         "status": {
-            "genarel": {}
+            "genaral": {
+                "opened_range_type_range folder": "Opened {range_type} range folder",
+                "failed to open_range_type_folder":"Failed to open {range_type} folder",
+                "fetching_online_wallpaper":"Fetching online wallpaper...",
+                "reset_complete":"Reset complete (no previous wallpaper)",
+                "reset completed":"Reset completed",
+                "scheduler_failed_no_matching_wallpapers":"Scheduler failed - no matching wallpapers",
+                "scheduler_started":"Scheduler started - {available_files} wallpapers, changing every {interval} minutes",
+                "scheduler_started_but_failed":"Scheduler started but failed to apply first wallpaper",
+                "scheduler_stopped": "Scheduler stopped",
+                "scheduler_set_for_favorite_collection":"Scheduler set for Favorite Collection",
+                "scheduler_set_to_use_entire_collection":"Scheduler set to use entire collection",
+                "range":"Range set to {range_type} (no files found)",
+                "range_with_file:":"Range set to: {} ({} files)",
+                "range_with_range_type:":"Range set to: {range_type}",
+                "unable_to_connect":"Unable to connect to the server.Please check your connection",
+                "playing_video": "Playing video: {}",
+                "image_applied" : "Image applied: {}",
+                "reset_completed_successfully": "Reset completed successfully",
+                "reset_cancelled": "Reset cancelled",
+                "online_wallpaper_set":"Online {} wallpaper set",
+                "download_failed": "Download failed: {error_msg}",
+                "logging_in":"Logging in...",
+                "invalid_credential": "Invalid credential",
+                "login_failed":"Login Failed",
+                "logout_successfull":"Logout successfull",
+                "applying_wallpaper_from_URI": "Applying wallpaper from URI", 
+                "wallpaper_cancelled_by_user":"Wallpaper change from URI was cancelled by user",
+                "wallpaper_set": "Wallpaper set: {}",
+                "original_wallpaper_restored":"Original wallpaper restored",
+                "Original_wallpaper_file_not_found": "Original wallpaper file not found",
+                "Failed_to_restore_original_wallpaper":"Failed to restore original wallpaper",
+                
+                
+                
+                "downloading_wallpaper":"Downloading wallpaper...",
+                "source_selected": "{} source selected",
+                "applied_wallpaper": "Applied wallpaper: {}",
+                "playing_video_failed": "Playing video failed: {}",
+                "applying_image_failed": "Applying image failed: {}",
+                "language_changed":"Language changed to {}",
+                "login_successfull":"Login successfull",
+                "connecting_to_server":"Connecting to server...",
+                "scheduler_disabled": "Scheduler disabled",
+                "scheduler_enabled": "Scheduler enabled",
+                "empty_frvt_collection":"Can't find any favorite wallpapers. Please add some to favorites first."
+                
+
+
+            }
         }
     }
 }

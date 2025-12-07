@@ -1,5 +1,4 @@
 import sys
-import os
 import logging
 
 from PySide6.QtWidgets import QApplication,QMessageBox
@@ -18,21 +17,19 @@ try:
     # Absolute imports (packaged layout)
     from code.scripts.utils.path_utils import get_style_path
     from code.scripts.setLogging import InitLogging
-    from code.scripts.utils.pathResolver import *
     from code.scripts.ui.main_window import TapeciarniaApp
     from code.scripts.utils.uri_handler import parse_uri_command
     from code.scripts.ui import icons_resource_rc
-    from code.scripts.utils.singletons import SingleApplication,get_config
+    from code.scripts.utils.singletons import SingleApplication
     logging.debug("Loaded modules using absolute imports (code.*)")
 
 except ImportError:
     # Dev environment imports
     from utils.path_utils import get_style_path
     from setLogging import InitLogging
-    from utils.pathResolver import *
     from ui.main_window import TapeciarniaApp
     from utils.uri_handler import parse_uri_command
-    from utils.singletons import SingleApplication,get_config
+    from utils.singletons import SingleApplication
     from ui import icons_resource_rc
     logging.debug("Loaded modules using relative imports")
 
@@ -83,9 +80,11 @@ def main():
     try:
         app = SingleApplication(sys.argv)
         app.setWindowIcon(QIcon(':/icons/icons/icon.ico'))
+        # translator = GlobalButtonTranslator.instance()
 
-        if not auth_of_devloper():
-            raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
+
+        # if not auth_of_devloper():
+        #     raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
         # Single instance wrapper
 
         # If this is a secondary instance → exit now
@@ -99,12 +98,12 @@ def main():
 
         # Handle incoming URIs / messages
         def dispatch_message(message):
-            uri = next(
+            uri = next( 
                 (arg for arg in message.split() if arg.startswith("tapeciarnia:")),
                 None
             )
 
-            # Bring window to foreground
+            # Bring win  to foreground
             window.showNormal()
             window.raise_()
             window.activateWindow()
@@ -145,3 +144,7 @@ if __name__ == "__main__":
     main()
         
 
+# TODO
+    # change dilog button text on translations change (done)
+    # change status ber text on translations change
+    

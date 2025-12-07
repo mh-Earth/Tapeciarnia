@@ -404,4 +404,20 @@ def gen_name_from_url(url:str) -> str:
     return url.split("/")[-1]
 
 
+def find_key_by_value_nested(d, target_value, path=None):
+    if path is None:
+        path = []
+
+    for k, v in d.items():
+        current_path = path + [k]
+
+        if v == target_value:
+            return current_path
+
+        if isinstance(v, dict):
+            result = find_key_by_value_nested(v, target_value, current_path)
+            if result:
+                return result
+
+    return None
 

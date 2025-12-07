@@ -9,6 +9,7 @@ from PySide6.QtCore import Signal, QLockFile, QDir
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from models.config import Config
+from core.language_controller import LanguageController
 import logging
 import os
 
@@ -93,3 +94,14 @@ def get_config() -> Config:
     if _config_instance is None:
         _config_instance = Config()
     return _config_instance
+
+
+_language_controller_instance: LanguageController | None = None
+def get_language_controller() -> LanguageController:
+    global _language_controller_instance
+    if _language_controller_instance is None:
+        _language_controller_instance = LanguageController(config=get_config())
+    return _language_controller_instance
+
+if __name__ == "__main__":
+    pass

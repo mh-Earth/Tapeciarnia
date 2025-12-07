@@ -4,6 +4,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import  QPixmap,QCursor
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QPushButton
+from PySide6.QtGui import QIcon
+
 
 from utils.path_utils import SAVES_DIR
 from utils.singletons import get_config
@@ -91,14 +94,14 @@ class EnhancedDragDropWidget(QWidget):
         
         
         # Upload text
-        self.upload_text = QLabel(self.parent_app.lang["uploadSection"]["dragDropInstruction"])
+        self.upload_text = QLabel(self.parent_app.language_controller.get("uploadSection.dragDropInstruction"))
         self.upload_text.setAlignment(Qt.AlignCenter)
         self.upload_text.setAcceptDrops(True)
         self.upload_text.setSizePolicy(self.upload_text.sizePolicy().horizontalPolicy(), QSizePolicy.Fixed)
         self.upload_text.setProperty('class',"MainUILable")
         
         # Supported formats label
-        self.supported_label = QLabel(self.parent_app.lang["uploadSection"]["supportedFormatsHint"])
+        self.supported_label = QLabel(self.parent_app.language_controller.get("uploadSection.supportedFormatsHint"))
         self.supported_label.setAlignment(Qt.AlignCenter)
         self.supported_label.setSizePolicy(self.supported_label.sizePolicy().horizontalPolicy(), QSizePolicy.Fixed)
         self.supported_label.setProperty('class',"MainUILable")
@@ -110,7 +113,7 @@ class EnhancedDragDropWidget(QWidget):
         buttons_layout.setSpacing(15)
         
         # Set as Wallpaper button (appears after selecting collection/favorites)
-        self.upload_btn = QPushButton(self.parent_app.lang["uploadSection"]["setAsWallpaperButton"])
+        self.upload_btn = QPushButton(self.parent_app.language_controller.get("uploadSection.setAsWallpaperButton"))
         self.upload_btn.clicked.connect(self.set_as_wallpaper)
         self.upload_btn.setProperty("class", "primary")
         self.upload_btn.setMinimumHeight(35)
@@ -119,7 +122,7 @@ class EnhancedDragDropWidget(QWidget):
 
         
         # Reset button (always visible when file is selected)
-        self.reset_btn = QPushButton(self.parent_app.lang["settings"]["resetButton"])
+        self.reset_btn = QPushButton(self.parent_app.language_controller.get("settings.resetButton"))
         self.reset_btn.clicked.connect(self.reset_selection)
         self.reset_btn.setProperty("class", "ghost")
         self.reset_btn.setMinimumHeight(35)
@@ -152,10 +155,10 @@ class EnhancedDragDropWidget(QWidget):
     def update_language(self):
         """Update UI text based on selected language"""
         logging.info("Updating EnhancedDragDropWidget language")
-        self.upload_text.setText(self.parent_app.lang["uploadSection"]["dragDropInstruction"])
-        self.supported_label.setText(self.parent_app.lang["uploadSection"]["supportedFormatsHint"])
-        self.upload_btn.setText(self.parent_app.lang["uploadSection"]["setAsWallpaperButton"])
-        self.reset_btn.setText(self.parent_app.lang["settings"]["resetButton"])
+        self.upload_text.setText(self.parent_app.language_controller.get("uploadSection.dragDropInstruction"))
+        self.supported_label.setText(self.parent_app.language_controller.get("uploadSection.supportedFormatsHint"))
+        self.upload_btn.setText(self.parent_app.language_controller.get("uploadSection.setAsWallpaperButton"))
+        self.reset_btn.setText(self.parent_app.language_controller.get("settings.resetButton"))
 
 
     def _create_file_path(self):
@@ -307,7 +310,7 @@ class EnhancedDragDropWidget(QWidget):
         self.dropped_file_path = None
         if hasattr(self, 'destination_path'):
             delattr(self, 'destination_path')
-        self.upload_text.setText(self.parent_app.lang["uploadSection"]["dragDropInstruction"])
+        self.upload_text.setText(self.parent_app.language_controller.get("uploadSection.dragDropInstruction"))
         self.supported_label.show()
         self.toggle_buttons_visibility(False)
         self.reset_btn.hide()  # Hide reset when no file selected
@@ -375,3 +378,185 @@ class EnhancedDragDropWidget(QWidget):
         logging.debug(f"File validation for {file_path}: {is_valid} (extension: {file_ext})")
         return is_valid
     
+
+
+
+
+class ButtonCollection:
+    """
+    A reusable collection of ready-made buttons for your PySide6 application.
+    This class provides factory methods that return styled QPushButtons.
+    """
+
+    def __init__(self,language_data:dict=None):
+        self.lang = language_data  # Placeholder for language data if needed
+        # Default styles you can customize
+        self.default_style = """
+            QPushButton {
+                padding: 6px 12px;
+                border-radius: 6px;
+                border: 1px solid #555;
+                color: white;
+            }
+        """
+
+    # -----------------------------------------------------
+    # GENERIC BUTTON CREATION
+    # -----------------------------------------------------
+    def create(self, text="", icon_path=None, style=None):
+        match text:
+            case "OK":
+                text = self.lang["navigation"]["ok"] if self.lang else "Okkk"
+            case "Cancel":
+                text = self.lang["navigation"]["cancel"] if self.lang else "Cancel"
+            case "Yes":
+                text = self.lang["navigation"]["yes"] if self.lang else "Yes"
+            case "No":
+                text = self.lang["navigation"]["no"] if self.lang else "No"
+            case "Apply":
+                text = self.lang["navigation"]["apply_button"] if self.lang else "Apply"
+            case "Save":
+                text = self.lang["navigation"]["save_button"] if self.lang else "Save"
+            case "Delete":
+                text = self.lang["navigation"]["delete_button"] if self.lang else "Delete"
+            case "Browse...":
+                text = self.lang["navigation"]["browse_button"] if self.lang else "Browse..."
+            case "Next":
+                text = self.lang["navigation"]["next_button"] if self.lang else "Next"
+            case "Back":
+                text = self.lang["navigation"]["back_button"] if self.lang else "Back"
+            case "Refresh":
+                text = self.lang["navigation"]["refresh_button"] if self.lang else "Refresh"
+            case _:
+                pass
+
+        btn = QPushButton(text)
+
+        if icon_path:
+            btn.setIcon(QIcon(icon_path))
+
+        btn.setStyleSheet(style or self.default_style)
+        return btn
+    
+    def _update_language(self,language_data:dict):
+        self.lang = language_data
+
+    # -----------------------------------------------------
+    # PREDEFINED COMMON BUTTONS
+    # -----------------------------------------------------
+    def ok_button(self):
+        return self.create("OK")
+
+    def cancel_button(self):
+        return self.create("Cancel")
+
+    def yes_button(self):
+        return self.create("Yes")
+
+    def no_button(self):
+        return self.create("No")
+
+    def apply_button(self):
+        return self.create("Apply")
+
+    def save_button(self):
+        return self.create("Save")
+
+    def delete_button(self):
+        return self.create("Delete")
+
+    def browse_button(self):
+        return self.create("Browse...")
+
+    def next_button(self):
+        return self.create("Next")
+
+    def back_button(self):
+        return self.create("Back")
+
+    def refresh_button(self):
+        return self.create("Refresh")
+
+    # -----------------------------------------------------
+    # ICON BUTTONS (optional)
+    # -----------------------------------------------------
+    def icon_ok(self, icon_path):
+        return self.create("", icon_path)
+
+    def icon_cancel(self, icon_path):
+        return self.create("", icon_path)
+
+    def icon_custom(self, icon_path):
+        return self.create("", icon_path)
+
+from PySide6.QtWidgets import QMessageBox
+
+
+class CustomMessageBox:
+    """
+    Working custom MessageBox that correctly shows styled buttons.
+    """
+
+    def __init__(self, button_maker: ButtonCollection):
+        self.button_maker = button_maker
+
+    def _add_custom_button(self, box, button, role):
+        """
+        Converts a QPushButton into a QMessageBox-owned button
+        so it can be shown properly.
+        """
+        qt_btn = box.addButton(button.text(), role)
+        qt_btn.setStyleSheet(button.styleSheet())
+
+        # Copy icon if exists
+        if not button.icon().isNull():
+            qt_btn.setIcon(button.icon())
+
+        return qt_btn
+
+    def update_language(self,language_data:dict):
+        self.button_maker._update_language(language_data)
+
+    def _create_box(self, parent, icon, title, message,
+                    show_ok=False, show_yes=False, show_no=False, show_cancel=False):
+
+        box = QMessageBox(parent)
+        box.setIcon(icon)
+        box.setWindowTitle(title)
+        box.setText(message)
+
+        # Custom buttons (now visible!)
+        if show_ok:
+            self._add_custom_button(box, self.button_maker.ok_button(), QMessageBox.AcceptRole)
+
+        if show_yes:
+            self._add_custom_button(box, self.button_maker.yes_button(), QMessageBox.YesRole)
+
+        if show_no:
+            self._add_custom_button(box, self.button_maker.no_button(), QMessageBox.NoRole)
+
+        if show_cancel:
+            self._add_custom_button(box, self.button_maker.cancel_button(), QMessageBox.RejectRole)
+
+        return box
+
+    def information(self, parent, title, message):
+        return self._create_box(
+            parent, QMessageBox.Information, title, message, show_ok=True
+        ).exec()
+
+    def warning(self, parent, title, message):
+        return self._create_box(
+            parent, QMessageBox.Warning, title, message, show_ok=True
+        ).exec()
+
+    def critical(self, parent, title, message):
+        return self._create_box(
+            parent, QMessageBox.Critical, title, message, show_ok=True
+        ).exec()
+
+    def question(self, parent, title, message):
+        return self._create_box(
+            parent, QMessageBox.Question, title, message,
+            show_yes=True, show_no=True, show_cancel=True
+        ).exec()

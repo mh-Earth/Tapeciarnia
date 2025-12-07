@@ -3,18 +3,14 @@ import random
 import logging
 from pathlib import Path
 from threading import Thread, Event
-from typing import Optional, Callable
-from utils.singletons import get_config
+from utils.singletons import get_config,get_language_controller
 from utils.path_utils import FAVS_DIR,SAVES_DIR
 import requests
 import logging
-from typing import List, Optional
 from PySide6.QtCore import QThread, Signal, Slot
 import requests
 import time
 from collections import deque
-from utils.validators import MY_COLLECTION_MODE,FAVOURITE_MODE
-
 
 
 
@@ -42,7 +38,7 @@ class UnifiedWallpaperScheduler:
         # thread states
         self.scheduler_thread = None
         self.is_running = False
-        self.range_type=None
+        self.range_type= None
 
         # online mode worker
         self.online_worker = None
@@ -228,11 +224,20 @@ class UnifiedWallpaperScheduler:
         if self.change_callback:
             self.change_callback(image_data=img_data)
 
+    def reset(self):
+        """Reset scheduler state (last wallpaper, etc.)"""
+        logging.info("Resetting scheduler state")
+        self.last_wallpaper = None
+        self.range_type= None
+        self.source = None
+        self.config.set_scheduler_settings(False, None, 30, None)
+        
 
 class OnlineWallpaperScheduler(QThread):
     image_ready = Signal(dict)          # {"url": url, "data": img_bytes} emits raw image data (for QPixmap.loadFromData)
     queue_updated = Signal(int)          # emits current queue size
     setStatus = Signal(str)
+    sendStopSignal = Signal(str)
 
 
     def __init__(self, api_url: str, parent=None):
@@ -245,6 +250,22 @@ class OnlineWallpaperScheduler(QThread):
         self.session = requests.Session()
         self.wait_interval = 1.0         # seconds between checks
         self.request_flag = False        # main app requests next image
+        self.traslator = get_language_controller()
+        self.config = get_config()
+
+    # ---------------------------------------------------------
+    #               HELPER METHODS
+    # ---------------------------------------------------------
+    def filter_urls_by_range_type(self,range_type:str):
+        if range_type.lower() == "mp4":
+            self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_video_extensions()))]
+        elif range_type.lower() == "wallpaper":
+            self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_image_extensions()))]
+        elif range_type.lower() == "all":
+            pass
+        else:
+            logging.warning(f"Invali type found: {range_type}. No filtering applied")
+
 
     # ---------------------------------------------------------
     #               THREAD MAIN LOOP
@@ -312,7 +333,7 @@ class OnlineWallpaperScheduler(QThread):
     def _fetch_json_urls(self):
         """Fetch new JSON and extend url_list."""
         logging.info("Fetching images from api")
-        self.setStatus.emit("Fetching images...")
+        self.setStatus.emit(self.traslator.get("status.genaral.fetching_online_wallpaper"))
 
         try:
             r = self.session.get(self.api_url, timeout=10)
@@ -325,9 +346,11 @@ class OnlineWallpaperScheduler(QThread):
                 if not url:
                     continue
                 self.url_list.append(url)
-            
+
+            self.filter_urls_by_range_type(self.config.get_range_preference() or "all")
+
             if len(self.url_list) <= 0:
-                self.setStatus("Can't find any image from your favourite collection")
+                self.sendStopSignal.emit(self.traslator.get("status.genaral.empty_frvt_collection"))
 
         except Exception as e:
             logging.error(f"[ERROR] Could not fetch JSON: {e}")

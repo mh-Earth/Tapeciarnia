@@ -55,13 +55,12 @@ class Config:
         self.set("scheduler_enabled", enabled)
 
     def get_scheduler_enabled(self) -> bool:
-        # print(self.get("scheduler_enabled_state",False))
         return self.to_bool(self.get("scheduler_enabled_state",False))
         
     def set_scheduler_enabled(self,scheduler_enabled:bool):
         self.set("scheduler_enabled_state",scheduler_enabled)
 
-    def get_language(self):
+    def get_language(self) -> str:
         lang = self.get("language",current_system_locale())
         return lang
 
