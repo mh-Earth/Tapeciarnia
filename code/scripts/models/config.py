@@ -1,7 +1,6 @@
 from PySide6.QtCore import QSettings
 
-from utils.path_utils import CONFIG_PATH
-from utils.system_utils import current_system_locale
+from utils.system_utils import current_system_locale,isBundle
 import logging
 
 
@@ -10,7 +9,7 @@ class Config:
         logging.debug("Initializing QSettings config backend")
 
         # Organization + Application name (used as storage path)
-        self.settings = QSettings("WallApp", "WallAppDesktop")
+        self.settings = QSettings("Tapeciarnia", "TapeciarniaApp")
         self.ensure_default_domains()
         self.ensure_valid_image_extensions()
         self.ensure_valid_video_extensions()
@@ -271,6 +270,14 @@ class Config:
         logging.debug(f"Combined valid extensions: {all_exts}")
         return all_exts
 
+    # -------------------------------
+    #  Installation managment
+    # -------------------------------
+    def set_is_first_run_after_installation(self,value:bool) -> None:
+        self.set("first_run_after_installation",value)
+
+    def get_is_first_run_after_installation(self) -> bool:
+        self.set("first_run_after_installation",False)
 
     def __str__(self):
-        return f"Config({len(self.data)} keys, path={CONFIG_PATH})"
+        return f"Config({len(self.data)} keys)"

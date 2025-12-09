@@ -7,21 +7,27 @@ import logging
 from models.config import Config
 from utils.path_utils import BASE_DIR
 from pprint import pprint
+from utils.system_utils import isBundle
 class LanguageController(QObject):
     # emit a signal when language is changed
     language_changed = Signal()
 
     def __init__(self,config:Config):
         super().__init__()
-        self.TRANSLATIONS_FILE = BASE_DIR / "translations" / "languages.json"
-        self.DEFAULT_FLIE = BASE_DIR / "translations" / "en.json"
+        if isBundle():
+            self.TRANSLATIONS_FILE = BASE_DIR / "bin" /"translations" / "languages.json"
+            self.DEFAULT_FLIE = BASE_DIR / "bin" /"translations" / "en.json"
+        else:
+            self.TRANSLATIONS_FILE = BASE_DIR / "translations" / "languages.json"
+            self.DEFAULT_FLIE = BASE_DIR / "translations" / "en.json"
+
         if not self.TRANSLATIONS_FILE.exists():
             logging.warning("Translations file does not exist at initialization.")
         self.config = config
         self.lang = None
-        self.default_lang = self.load_default_language()
+        self.default_lang = self.load_default_language_data()
 
-    def load_default_language(self):
+    def load_default_language_data(self):
         """Load the default language (English)"""
         if self.DEFAULT_FLIE.exists():
             with self.DEFAULT_FLIE.open("r", encoding="utf-8") as f:

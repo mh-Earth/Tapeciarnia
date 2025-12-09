@@ -87,8 +87,9 @@ class TapeciarniaApp(QMainWindow):
         self.current_shuffle_mode = None
         self.user_name:str|None = None
         # scheduler
-        self.scheduler.set_api_url(f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user=gmail&pokaz=ulubione_tap&x={self.x}&y={self.y}&hd=1")
         self.scheduler.status_callback = self._set_status
+        # 
+        print(self.config.get_is_first_run_after_installation())
         
 
 
@@ -294,7 +295,7 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, 'urlInput'):
             self.ui.urlInput.clear()
         
-        self._set_status(self.language_controller.get("status.genaral.reset_completed"))
+        self._set_status(self.language_controller.get("status.genaral.reset_completed_successfully"))
         logging.info("Reset completed successfully")
         
         # Show success confirmation
@@ -797,8 +798,8 @@ class TapeciarniaApp(QMainWindow):
             
             # Get current source and range
             source = self.scheduler.source
-            if not source:
-                self.scheduler.source = source
+            # if not source:
+            #     self.scheduler.source = source
             
             range_type = self.current_range
 
@@ -831,7 +832,7 @@ class TapeciarniaApp(QMainWindow):
                     return
                 
                 # Files available - start the scheduler
-                logging.info(f"Found {len(available_files)} files for scheduler, starting...")
+                logging.info(f"{len(available_files)} files found for scheduler, starting...")
                 self.scheduler.start(source,range_type, interval)
                 
                 # Apply a random wallpaper immediately from the available files
@@ -844,17 +845,17 @@ class TapeciarniaApp(QMainWindow):
                     #  upadate start button
                     self._update_start_btn()
                     # Show success message
-                    self.customMessageBox.information(
-                        self,
-                        "Scheduler Started",
-                        f"Scheduler started successfully!\n\n"
-                        f"• Source: {self._get_source_display_name(source)}\n"
-                        f"• Range: {self._get_range_display_name()}\n"
-                        f"• Interval: {interval} minutes\n"
-                        f"• Available wallpapers: {len(available_files)}\n\n"
-                        f"First wallpaper: {random_wallpaper.name}",
+                    # self.customMessageBox.information(
+                    #     self,
+                    #     "Scheduler Started",
+                    #     f"Scheduler started successfully!\n\n"
+                    #     f"• Source: {self._get_source_display_name(source)}\n"
+                    #     f"• Range: {self._get_range_display_name()}\n"
+                    #     f"• Interval: {interval} minutes\n"
+                    #     f"• Available wallpapers: {len(available_files)}\n\n"
+                    #     f"First wallpaper: {random_wallpaper.name}",
                         
-                    ) #
+                    # ) #
                     
                 except Exception as e:
                     logging.error(f"Failed to apply random wallpaper: {e}")
@@ -876,8 +877,8 @@ class TapeciarniaApp(QMainWindow):
             else:
                 self.customMessageBox.warning(
                     self,
-                    "Scheduler Error",
-                    "Scheduler can only be started with 'My Collection' or 'Favorites' as source.", 
+                    self.language_controller.get("dialog.warning.sheduler_error_title"),
+                    self.language_controller.get("dialog.warning.sheduler_error_message"),
                 ) #
                 logging.error("Scheduler start failed - invalid source")
                 
@@ -1490,7 +1491,7 @@ class TapeciarniaApp(QMainWindow):
             logging.info(f"Applying video wallpaper: {video_path}")
             self.controller.start_video(video_path)
             self.config.set_last_video(video_path)
-            self._set_status(self.language_controller.get("status.genaral.playing_video").format({Path(video_path).name})) #
+            self._set_status(self.language_controller.get("status.genaral.playing_video").format(Path(video_path).name)) #
             self._update_url_input(video_path)
             logging.info(f"Video wallpaper applied successfully: {Path(video_path).name}")
             self.set_buttons(True)
@@ -1861,6 +1862,7 @@ class TapeciarniaApp(QMainWindow):
     
         self.scheduler.interval_minutes = interval
         self.scheduler.range_type = range_type
+        self.scheduler.source = source
 
         if hasattr(self.ui, "interval_spinBox"):
             self.ui.interval_spinBox.setValue(interval)
@@ -1891,12 +1893,9 @@ class TapeciarniaApp(QMainWindow):
                 self._update_source_buttons_active(None)
                 
         else:
-            logging.info("No scheduler source set, defaulting to None")
+            logging.info("No scheduler source set, changing source button style to None")
             self._update_source_buttons_active(None)
             
-            
-
-
         
         logging.info(f"Loaded scheduler settings - source: {source}, range: {range_type}, interval: {interval}, enabled: {enabled}")
         
@@ -1904,7 +1903,7 @@ class TapeciarniaApp(QMainWindow):
         self._update_scheduler_ui_state()
         # load start button state
         self._update_start_btn()
-        logging.info("Settings loaded successfully")
+        logging.info(f"Settings loaded successfully")
 
     # System tray
     def _setup_tray(self):
@@ -2037,10 +2036,12 @@ class TapeciarniaApp(QMainWindow):
             self.customMessageBox.information(
                 self,
                 self.language_controller.get("dialog.info.login_successfull_title"),
-                f"{self.language_controller.get("dialog.info.login_successfull_message")} {data.get('login')}",
+                f"{self.language_controller.get("dialog.info.login_successfull_message")} {self.user_name}",
                 # str(data),
             ) #
             logging.info("Login successfull")
+            self.scheduler.set_api_url(f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user={self.user_name}&pokaz=ulubione_tap&x={self.x}&y={self.y}&hd=1")
+
 
             # hide the input areas and change the text on log in bnt to log out
         
@@ -2290,14 +2291,15 @@ class TapeciarniaApp(QMainWindow):
                     # This handles the simple image URLs (e.g., .jpg, .png)
                     # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
                     
-                    reply = self.customMessageBox.question(
-                        self,
-                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
-                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\ntapeciarnia:{image_id}",
-                    )
+                    # reply = self.customMessageBox.question(
+                    #     self,
+                    #     self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
+                    #     f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\ntapeciarnia:{image_id}",
+                    # )
                     
                     # Store the user's decision
-                    confirmed = reply 
+                    # confirmed = reply 
+                    confirmed = True 
                     self.last_uri_command = {
                         "action": action,
                         "url": wallpaper_url,

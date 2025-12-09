@@ -9,6 +9,7 @@ from PySide6.QtCore import Signal, QLockFile, QDir
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from models.config import Config
+from utils.system_utils import isBundle
 from core.language_controller import LanguageController
 import logging
 import os
@@ -73,9 +74,11 @@ class SingleApplication(QApplication):
     # Secondary → send args to primary then quit
     def _send_message_to_primary(self, argv):
         message = " ".join(argv[1:]) if len(argv) > 1 else ""
-
         socket = QLocalSocket()
         socket.connectToServer(self.SERVER_NAME)
+
+        if message == "":
+            message = "open"
 
         if socket.waitForConnected(1000):
             socket.write(message.encode("utf-8"))
@@ -102,6 +105,8 @@ def get_language_controller() -> LanguageController:
     if _language_controller_instance is None:
         _language_controller_instance = LanguageController(config=get_config())
     return _language_controller_instance
+
+
 
 if __name__ == "__main__":
     pass

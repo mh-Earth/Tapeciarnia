@@ -49,19 +49,6 @@ class UnifiedWallpaperScheduler:
 
         logging.info("UnifiedWallpaperScheduler initialized")
 
-    # -------------------------------------------------------------------
-    # API SETUP
-    # -------------------------------------------------------------------
-    # def setup_mode(self):
-    #     ''' save ,frvt or super (in future)'''
-    #     if self.source == str(SAVES_DIR):
-    #         self.mode = MY_COLLECTION_MODE
-    #     elif self.source == str(FAVS_DIR):
-    #         self.mode = FAVOURITE_MODE
-    #     else:
-    #         self.mode = MY_COLLECTION_MODE
-
-
     def set_api_url(self, api_url: str):
         """Set API URL for online mode"""
         self.api_url = api_url
@@ -70,7 +57,7 @@ class UnifiedWallpaperScheduler:
         self.change_callback = callback
 
     def set_range(self, range_type: str):
-        logging.debug(f"Range change to {self.range_type} -> {range_type}")
+        logging.info(f"Range change to {self.range_type} -> {range_type}")
         self.range_type = range_type
 
     def get_range(self) ->str:
@@ -198,22 +185,24 @@ class UnifiedWallpaperScheduler:
         else:
             folders = [Path(source)]
 
-        if self.range_type.lower() == "mp4":
-            exts = self.config.get_valid_video_extensions()
-        elif self.range_type.lower() == "wallpaper":
-            exts = self.config.get_valid_image_extensions()
-        elif self.range_type.lower() == "all":
-            exts = self.config.get_all_valid_extensions()
-        else:
-            logging.warning(f"Invali type found: {self.range_type}. Switching to all range")
-            exts = self.config.get_all_valid_extensions()
+        if self.range_type != None:
+            if self.range_type.lower() == "mp4":
+                exts = self.config.get_valid_video_extensions()
+            elif self.range_type.lower() == "wallpaper":
+                exts = self.config.get_valid_image_extensions()
+            elif self.range_type.lower() == "all":
+                exts = self.config.get_all_valid_extensions()
+            else:
+                logging.warning(f"Invalid range type found: {self.range_type}. Switching to all range")
+                self.set_range("all")
+                exts = self.config.get_all_valid_extensions()
 
-        for f in folders:
-            if not f.exists():
-                continue
-            files += [x for x in f.iterdir() if x.is_file() and x.suffix.lower() in exts]
+            for f in folders:
+                if not f.exists():
+                    continue
+                files += [x for x in f.iterdir() if x.is_file() and x.suffix.lower() in exts]
 
-        return files
+            return files
 
     # -------------------------------------------------------------------
     # ONLINE WORKFLOW

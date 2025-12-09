@@ -10,7 +10,6 @@ import socket
 import os
 import logging
 from PySide6.QtWidgets import QApplication
-import tempfile
 from utils.path_utils import FAVS_DIR
 
 
@@ -397,6 +396,9 @@ def get_primary_screen_dimensions() -> tuple[int, int]:
     except Exception as e:
         logging.error(f"Failed to get screen dimensions: {e}")
         return 1920, 1080 # Safe fallback
+
+
+
 
 
 

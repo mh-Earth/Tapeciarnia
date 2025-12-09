@@ -19,7 +19,7 @@ try:
     from code.scripts.setLogging import InitLogging
     from code.scripts.ui.main_window import TapeciarniaApp
     from code.scripts.utils.uri_handler import parse_uri_command
-    from code.scripts.ui import icons_resource_rc
+    from code.scripts.ui import icons_resource_rc # do not remove this
     from code.scripts.utils.singletons import SingleApplication
     logging.debug("Loaded modules using absolute imports (code.*)")
 
@@ -30,7 +30,7 @@ except ImportError:
     from ui.main_window import TapeciarniaApp
     from utils.uri_handler import parse_uri_command
     from utils.singletons import SingleApplication
-    from ui import icons_resource_rc
+    from ui import icons_resource_rc # do not remove this
     logging.debug("Loaded modules using relative imports")
 
 try:
@@ -82,22 +82,27 @@ def main():
         app.setWindowIcon(QIcon(':/icons/icons/icon.ico'))
         # translator = GlobalButtonTranslator.instance()
 
-
-        # if not auth_of_devloper():
-        #     raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
+ 
+        if not auth_of_devloper():
+            raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
         # Single instance wrapper
 
         # If this is a secondary instance → exit now
         if not app.is_primary_instance:
+            # QMessageBox.critical(None,"Multiple instance detected","Another instance of Tapeciarnia is already running...",QMessageBox.StandardButton.Ok)
             sys.exit(0)
 
         # ------- PRIMARY INSTANCE BEGINS --------
-
         load_stylesheet(app, get_style_path())
         window = TapeciarniaApp()
 
         # Handle incoming URIs / messages
         def dispatch_message(message):
+            if message == "open":
+                # Bring win  to foreground
+                window.show_from_tray()
+                return
+            
             uri = next( 
                 (arg for arg in message.split() if arg.startswith("tapeciarnia:")),
                 None
@@ -123,6 +128,7 @@ def main():
         # Initial launch with arguments
         if len(sys.argv) > 1:
             dispatch_message(" ".join(sys.argv[1:]))
+
         else:
             window.showNormal()
 
@@ -141,10 +147,11 @@ def main():
         raise
 
 if __name__ == "__main__":
+    
     main()
         
 
 # TODO
     # change dilog button text on translations change (done)
-    # change status ber text on translations change
+    # change status ber text on translations change (done)
     

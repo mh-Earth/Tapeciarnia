@@ -676,7 +676,7 @@ class Ui_MainWindow(object):
         self.icon_label.setText("")
         self.url_loader_text_label.setText(QCoreApplication.translate("MainWindow", u"Images or Video URL", None))
         self.url_loader_text_label.setProperty(u"class", QCoreApplication.translate("MainWindow", u"MainUILable", None))
-        self.urlInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"https://example.com/image.jpg or https://.../video.mp4", None))
+        self.urlInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"https://www.tapeciarnia.pl/path/image.jpg or https://www.tapeciarnia.pl/path/video.mp4", None))
         self.loadUrlButton.setText(QCoreApplication.translate("MainWindow", u"Load", None))
         self.loadUrlButton.setProperty(u"class", QCoreApplication.translate("MainWindow", u"primary", None))
         self.url_helper_text_label.setText(QCoreApplication.translate("MainWindow", u"Paete a dirick link to a .jpg/.png or mp4", None))

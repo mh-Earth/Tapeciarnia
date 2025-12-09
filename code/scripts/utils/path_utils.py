@@ -8,6 +8,31 @@ import logging
 from pathlib import Path
 
 
+
+def isBundle() -> bool:
+    """
+    Determines the path of the running application/script's directory, 
+    handling both source code and bundled executables.
+    """
+    if getattr(sys, 'frozen', False):
+        return True
+    else:
+        return False
+
+
+# Collection structure
+def get_collections_folder() -> Path:
+    """Return the main collection folder for all wallpapers"""
+    home = Path.home()
+    collection_dir = home / "Tapeciarnia"
+    collection_dir.mkdir(parents=True, exist_ok=True)
+    return collection_dir
+
+COLLECTION_DIR = get_collections_folder()
+FAVS_DIR = COLLECTION_DIR / "Favorites"
+SAVES_DIR = COLLECTION_DIR / "Saves"
+
+
 def get_app_root():
     """
     Determines the path of the running application/script's directory, 
@@ -22,30 +47,14 @@ def get_app_root():
 # Base paths
 BASE_DIR = get_app_root()
 ROOT_DIR = BASE_DIR.parent.parent
-CONFIG_PATH = ROOT_DIR / "config.json"
 
-# Collection structure
-def get_collections_folder() -> Path:
-    """Return the main collection folder for all wallpapers"""
-    home = Path.home()
-    collection_dir = home / "Pictures" / "Tapeciarnia"
-    collection_dir.mkdir(parents=True, exist_ok=True)
-    return collection_dir
-
-COLLECTION_DIR = get_collections_folder()
-FAVS_DIR = COLLECTION_DIR / "Favorites"
-SAVES_DIR = COLLECTION_DIR / "Saves"
 
 # Ensure folders exist
-for d in (COLLECTION_DIR,SAVES_DIR):
+for d in (COLLECTION_DIR,SAVES_DIR,FAVS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 TMP_DOWNLOAD_FILE = COLLECTION_DIR / "download_path.tmp"
-TRANSLATIONS_DIR = BASE_DIR / "code" / "scripts" / "translations"
 
-# Config file init
-if not CONFIG_PATH.exists():
-    CONFIG_PATH.write_text(json.dumps({}), encoding="utf-8")
 
 # Executable paths
 def get_mpv_path() -> Path:
@@ -74,7 +83,11 @@ def get_weebp_path() -> Path:
 
 def get_style_path() -> Path:
     """Get style file path"""
+    if isBundle():
+        return BASE_DIR / "bin" / "ui" / "style" / "style.qss"
+    
     return BASE_DIR / "ui" / "style" / "style.qss"
+
 
 def get_bin_path() -> Path:
     """Get binary folder path"""
@@ -122,8 +135,13 @@ def get_folder_for_range(range_type: str) -> Path:
 def get_icon_absolute_path(icon_filename):
     """
     Returns the absolute path to a specific icon file within the bundled assets.
+    
     """
-    return os.path.join(BASE_DIR, 'ui', 'icons', icon_filename)
+    if isBundle():
+        return os.path.join(BASE_DIR, "bin" ,'ui', 'icons', icon_filename)
+    else:
+        return os.path.join(BASE_DIR, 'ui', 'icons', icon_filename)
+
 
 # Backward compatibility
 get_app_root = get_app_root

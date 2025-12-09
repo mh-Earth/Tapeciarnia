@@ -103,7 +103,9 @@
                 "unsupported_file_title": "Unsupported file",
                 "unsupported_file_message": "Unsupported local file type.",
                 "offile_shuffle_title": "Online Unavailable",
-                "offile_shuffle_message": "Could not fetch online wallpaper. Using local collection instead."
+                "offile_shuffle_message": "Could not fetch online wallpaper. Using local collection instead.",
+                "sheduler_error_title": "Scheduler error",
+                "sheduler_error_message": "Scheduler can only be started with 'My Collection' or 'Favorites' as source."
             },
             "critical": {
                 "sytsem_tray_unavailable_title": "System Tray",
@@ -125,7 +127,7 @@
         },
         "status": {
             "genaral": {
-                "opened_range_type_range folder": "Opened {range_type} range folder",
+                "opened_range_type_range_folder": "Opened {range_type} range folder",
                 "failed to open_range_type_folder":"Failed to open {range_type} folder",
                 "fetching_online_wallpaper":"Fetching online wallpaper...",
                 "reset_complete":"Reset complete (no previous wallpaper)",
@@ -137,8 +139,8 @@
                 "scheduler_set_for_favorite_collection":"Scheduler set for Favorite Collection",
                 "scheduler_set_to_use_entire_collection":"Scheduler set to use entire collection",
                 "range":"Range set to {range_type} (no files found)",
-                "range_with_file:":"Range set to: {} ({} files)",
-                "range_with_range_type:":"Range set to: {range_type}",
+                "range_with_file":"Range set to: {} ({} files)",
+                "range_with_range_type":"Range set to: {range_type}",
                 "unable_to_connect":"Unable to connect to the server.Please check your connection",
                 "playing_video": "Playing video: {}",
                 "image_applied" : "Image applied: {}",

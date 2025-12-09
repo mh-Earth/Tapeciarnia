@@ -396,7 +396,6 @@ class ButtonCollection:
                 padding: 6px 12px;
                 border-radius: 6px;
                 border: 1px solid #555;
-                color: white;
             }
         """
 
