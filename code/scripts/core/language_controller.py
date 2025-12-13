@@ -15,10 +15,10 @@ class LanguageController(QObject):
     def __init__(self,config:Config):
         super().__init__()
         if isBundle():
-            self.TRANSLATIONS_FILE = BASE_DIR / "bin" /"translations" / "languages.json"
+            self.TRANSLATIONS_FILE = BASE_DIR / "bin" /"translations" / "translate.json"
             self.DEFAULT_FLIE = BASE_DIR / "bin" /"translations" / "en.json"
         else:
-            self.TRANSLATIONS_FILE = BASE_DIR / "translations" / "languages.json"
+            self.TRANSLATIONS_FILE = BASE_DIR / "translations" / "translate.json"
             self.DEFAULT_FLIE = BASE_DIR / "translations" / "en.json"
 
         if not self.TRANSLATIONS_FILE.exists():
@@ -144,6 +144,7 @@ class LanguageController(QObject):
         lang_code = self.config.get_language()
         logging.info(f"Setting up initial language: {lang_code}")
         index = combo_box.findText(lang_code.upper())
+        print(index)
         if index != -1:
             combo_box.setCurrentIndex(index)
             self.lang = self.get_language_by_name(lang_code)
@@ -160,6 +161,7 @@ class LanguageController(QObject):
                 f"Language code '{lang_code}' not supported by the app.\n\nDefauting to EN language",
                 QMessageBox.StandardButton.Ok
             )
+            self.language_changed.emit()
         
     
     def get_current_language(self) -> str:

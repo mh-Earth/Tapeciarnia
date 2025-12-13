@@ -12,6 +12,9 @@ import logging
 from PySide6.QtWidgets import QApplication
 from utils.path_utils import FAVS_DIR
 
+import os
+from urllib.parse import urlparse, unquote
+
 
 
 def isBundle() -> bool:
@@ -249,20 +252,26 @@ def set_static_desktop_wallpaper(path: str) -> bool:
         logging.error("Unexpected wallpaper error: %s", e, exc_info=True)
         return False
     
-def conver_bytes_to_tmp_path(img_bytes: bytes, filename: str = "current_wallpaper.jpg") -> bool:
+def conver_bytes_to_tmp_path(img_bytes: bytes, filename: str = "current_wallpaper.jpg",ext:str="jpg") -> str:
     """
-    Save image bytes to a temporary file and return it's path.
+    Save image/video bytes to a temporary file and return it's path.
     """
 
     # Create temporary file
-    path = FAVS_DIR / filename
+    if ext == ".jpg":
+        path = FAVS_DIR / filename
+    elif ext == ".mp4":
+        path = FAVS_DIR / "current_wallpaper.mp4"
+    else:
+        path = FAVS_DIR / f"current_wallpaper{ext}"
+
 
     # Save image
     with open(path, "wb") as f:
         f.write(img_bytes)
 
 
-    return path
+    return str(path)
 
 
 def get_system_info() -> dict:
@@ -423,3 +432,41 @@ def find_key_by_value_nested(d, target_value, path=None):
 
     return None
 
+def get_file_extension_from_url(url: str) -> str:
+    """
+    Extracts the file extension from a URL.
+
+    Args:
+        url (str): The URL string (e.g., "https://example.com/image.jpg?q=1").
+
+    Returns:
+        str: The file extension (e.g., ".jpg" or an empty string if none found).
+    """
+    try:
+        # 1. Parse the URL
+        # urlparse separates the URL into components (scheme, netloc, path, params, query, fragment)
+        parsed_url = urlparse(url)
+
+        # 2. Get the path component
+        # The path is the part of the URL that usually contains the filename.
+        path = parsed_url.path
+
+        # 3. Unquote the path
+        # Decodes URL-encoded characters (e.g., "%20" becomes " ")
+        decoded_path = unquote(path)
+
+        # 4. Get the filename and extension
+        # os.path.splitext splits the path into a root and an extension.
+        # It correctly handles paths without extensions (returns root, "")
+        _, ext = os.path.splitext(decoded_path)
+
+        # Return the extension (it includes the dot, e.g., ".jpg")
+        # Ensure it's lowercase for standardization
+        return ext.lower()
+
+    except Exception as e:
+        # Handle potential parsing or decoding errors gracefully
+        print(f"Error processing URL '{url}': {e}")
+        return ""
+
+# --- Example Usage ---

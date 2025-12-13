@@ -1,6 +1,6 @@
 from PySide6.QtCore import QSettings
 
-from utils.system_utils import current_system_locale,isBundle
+from utils.system_utils import current_system_locale,get_primary_screen_dimensions
 import logging
 
 
@@ -13,6 +13,7 @@ class Config:
         self.ensure_default_domains()
         self.ensure_valid_image_extensions()
         self.ensure_valid_video_extensions()
+        self.set_default_super_wallpaper_urls()
         logging.info("QSettings backend initialized")
 
     @staticmethod
@@ -54,10 +55,10 @@ class Config:
         self.set("scheduler_enabled", enabled)
 
     def get_scheduler_enabled(self) -> bool:
-        return self.to_bool(self.get("scheduler_enabled_state",False))
+        return self.to_bool(self.get("scheduler_enabled",False))
         
     def set_scheduler_enabled(self,scheduler_enabled:bool):
-        self.set("scheduler_enabled_state",scheduler_enabled)
+        self.set("scheduler_enabled",scheduler_enabled)
 
     def get_language(self) -> str:
         lang = self.get("language",current_system_locale())
@@ -66,7 +67,7 @@ class Config:
     def set_language(self, lang: str):
         self.set("language", lang)
 
-    def get_range_preference(self):
+    def get_range_preference(self) -> str:
         return self.get("range_preference", "all")
 
     def set_range_preference(self, pref: str):
@@ -281,3 +282,72 @@ class Config:
 
     def __str__(self):
         return f"Config({len(self.data)} keys)"
+
+    # -------------------------------
+    # URl Managment
+    # -------------------------------
+
+    def set_super_wallpaper_url(self,url:str,type:str) -> None:
+        if type == "all":
+            self.set("super_wallpaper_url_all",url)
+        
+        elif type == "wallpaper":
+            self.set("super_wallpaper_url_wallpaper",url)
+        
+        elif type == "mp4":
+            self.set("super_wallpaper_url_mp4",url)
+
+    def get_super_wallpaper_url(self,type:str) -> str:
+        if type == "all":
+            return self.get("super_wallpaper_url_all","")
+        
+        elif type == "wallpaper":
+            return self.get("super_wallpaper_url_wallpaper","")
+        
+        elif type == "mp4":
+            return self.get("super_wallpaper_url_mp4","")
+        
+        return ""
+    
+    def set_default_super_wallpaper_urls(self) -> None:
+        urls = {
+            "mp4": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_mp4&x={x}&y={y}&lang={lang}",
+            "wallpaper": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_img&x={x}&y={y}&lang={lang}",
+            "all": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all&x={x}&y={y}&lang={lang}"
+        }
+
+        x,y = get_primary_screen_dimensions()
+        lang = self.get_language() if self.get_language() else current_system_locale()
+        
+        logging.debug(f"Setting default super wallpaper URLs with x={x}, y={y}, lang={lang}")
+
+        for _type,url_template in urls.items():
+            url = url_template.format(x=x, y=y, lang=lang)
+            self.set_super_wallpaper_url(url,_type)
+            logging.debug(f"Set default super wallpaper URL for type '{type}': {url}")
+
+        logging.debug("Default super wallpaper URLs set successfully")
+
+    def set_fvrt_wallpaper_url(self,user_name:str) -> None:
+        if user_name:
+            x,y =get_primary_screen_dimensions()
+            url = f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user={user_name}&pokaz=ulubione_tap&x={x}&y={y}&hd=1"
+            self.set("fvrt_wallpaper_url",url)
+
+        else:
+            raise ValueError("User name must be provided to set favorite wallpaper URL.")
+    
+    def get_frvt_wallpaper_url(self) -> str:
+        return self.get("fvrt_wallpaper_url","")
+
+    # def set_default_fvrt_wallpaper_url(self) -> None:
+
+    #     url = "https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user={user_name}&pokaz=ulubione_tap&x={x}&y={y}&hd=1"
+
+    #     x,y = get_primary_screen_dimensions()
+
+    #     url = url.format(x=x, y=y,user_name=None)
+
+    #     self.set("fvrt_wallpaper_url",url)
+
+    #     logging.debug(f"Set default frvt wallpaper URL: {url}")

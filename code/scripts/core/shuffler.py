@@ -141,7 +141,7 @@ class Shuffler(QThread):
 
             # 5. Check the Content Type and attempt JSON parsing
             if 'application/json' in response.headers.get('Content-Type', ''):
-                data = response.json()
+                data = response.json().get("wall")["1"]
                 
                 # Assuming the JSON response structure contains a key like 'url' or 'download_link'
                 # Adjust the key 'url' based on the actual response structure from the API

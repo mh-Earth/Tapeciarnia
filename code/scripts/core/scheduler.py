@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from threading import Thread, Event
 from utils.singletons import get_config,get_language_controller
-from utils.path_utils import FAVS_DIR,SAVES_DIR
+from utils.path_utils import FAVS_DIR,SAVES_DIR,SUPER_WALLPAPER_DIR
 import requests
 import logging
 from PySide6.QtCore import QThread, Signal, Slot
@@ -51,6 +51,7 @@ class UnifiedWallpaperScheduler:
 
     def set_api_url(self, api_url: str):
         """Set API URL for online mode"""
+        logging.info(f"Online scheduler api set to {api_url}")
         self.api_url = api_url
 
     def set_change_callback(self, callback):
@@ -103,6 +104,17 @@ class UnifiedWallpaperScheduler:
             self.online_worker.setStatus.connect(lambda e: self.status_callback(e))
             self.online_worker.start()
 
+        if self.source == str(SUPER_WALLPAPER_DIR):
+            if not self.api_url:
+                raise RuntimeError("API URL must be set before starting online mode")
+
+            # start online worker
+            self.online_worker = OnlineWallpaperScheduler(self.api_url)
+            self.online_worker.image_ready.connect(self._on_online_image_ready)
+            self.online_worker.queue_updated.connect(self.get_queue_upadate)
+            self.online_worker.setStatus.connect(lambda e: self.status_callback(e))
+            self.online_worker.start()
+
         # main loop (handles timing)
         self.scheduler_thread = Thread(target=self._main_loop, daemon=True)
         self.scheduler_thread.start()
@@ -143,7 +155,12 @@ class UnifiedWallpaperScheduler:
                 # ask for image
                 if self.online_worker:
                     self.online_worker.request_image()
-
+            
+            elif self.source == str(SUPER_WALLPAPER_DIR):
+                # ask for image
+                if self.online_worker:
+                    self.online_worker.request_image()
+            
             self.stop_event.wait(self.interval_minutes * 60)
 
 

@@ -31,6 +31,7 @@ def get_collections_folder() -> Path:
 COLLECTION_DIR = get_collections_folder()
 FAVS_DIR = COLLECTION_DIR / "Favorites"
 SAVES_DIR = COLLECTION_DIR / "Saves"
+SUPER_WALLPAPER_DIR = SAVES_DIR / "SuperWallpapers"
 
 
 def get_app_root():
@@ -50,7 +51,7 @@ ROOT_DIR = BASE_DIR.parent.parent
 
 
 # Ensure folders exist
-for d in (COLLECTION_DIR,SAVES_DIR,FAVS_DIR):
+for d in (COLLECTION_DIR,SAVES_DIR,FAVS_DIR,SUPER_WALLPAPER_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 TMP_DOWNLOAD_FILE = COLLECTION_DIR / "download_path.tmp"
@@ -117,7 +118,7 @@ def get_folder_for_source(source_type: str) -> Path:
     folder_map = {
         "frvt": FAVS_DIR,
         "added": SAVES_DIR,
-        "super": SAVES_DIR,  # Fallback for super wallpaper
+        "super": SUPER_WALLPAPER_DIR,  # Fallback for super wallpaper
         "all": SAVES_DIR,
         "save": SAVES_DIR
     }

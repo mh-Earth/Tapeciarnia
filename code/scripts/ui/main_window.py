@@ -41,8 +41,8 @@ from core.scheduler import UnifiedWallpaperScheduler
 from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
-from utils.path_utils import COLLECTION_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,find_key_by_value_nested
+from utils.path_utils import SUPER_WALLPAPER_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
+from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
@@ -89,10 +89,6 @@ class TapeciarniaApp(QMainWindow):
         # scheduler
         self.scheduler.status_callback = self._set_status
         # 
-        print(self.config.get_is_first_run_after_installation())
-        
-
-
 
         # Enhanced drag & drop
         self.drag_drop_widget = EnhancedDragDropWidget(self)
@@ -581,6 +577,9 @@ class TapeciarniaApp(QMainWindow):
         if hasattr(self.ui, "user_name_label"):
             self.ui.user_name_label.setVisible(False)
             self.ui.user_name_label.mousePressEvent = self._handel_mouse_press_username
+
+        if hasattr(self.ui, "logoLabel"):
+            self.ui.logoLabel.mousePressEvent = self._handel_mouse_press_logo
         
         # Connect signals
         self._bind_ui_controls()
@@ -868,7 +867,16 @@ class TapeciarniaApp(QMainWindow):
                     ) # no need
 
             elif self.scheduler.source == str(FAVS_DIR):
-                self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type="mp4")
+                self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type=range_type)
+
+                self.scheduler.start(source,range_type, interval)
+                self.scheduler.online_worker.sendStopSignal.connect(self._stop_scheduler)
+
+                self._update_start_btn()
+
+            elif self.scheduler.source == str(SUPER_WALLPAPER_DIR):
+                self.config.set_scheduler_settings(enabled=True, source=source,interval=interval,range_type=range_type)
+
                 self.scheduler.start(source,range_type, interval)
                 self.scheduler.online_worker.sendStopSignal.connect(self._stop_scheduler)
 
@@ -895,12 +903,6 @@ class TapeciarniaApp(QMainWindow):
         else:
             self._set_status(self.language_controller.get("status.genaral.scheduler_stopped")) #
 
-        # Reset source buttons
-        self._update_source_buttons_active(None)
-        self.scheduler.source = None
-        # Reset range buttons
-        self._update_range_buttons_active(None)
-        self.current_range = None
 
     def _update_start_btn(self):
         if self.scheduler.is_active():
@@ -922,7 +924,7 @@ class TapeciarniaApp(QMainWindow):
         source_names = {
             str(FAVS_DIR): self.language_controller.get("settings.favoriteWallpapersButton"),
             str(SAVES_DIR): self.language_controller.get("settings.myCollectionButton"),
-            "super": "Super Wallpaper"
+            str(SUPER_WALLPAPER_DIR):  self.language_controller.get("settings.superWallpaperButton")
         }
         return source_names.get(source, "Custom Source")
 
@@ -1017,7 +1019,17 @@ class TapeciarniaApp(QMainWindow):
     def on_super_wallpaper(self):
         # """Super Wallpaper source"""
         # logging.info("Super Wallpaper source selected")
-        self.customMessageBox.information(self, self.language_controller.get("dialog.info.super_wallpaper_title"), self.language_controller.get("dialog.info.super_wallpaper_message") ) #
+        # self.customMessageBox.information(self, self.language_controller.get("dialog.info.super_wallpaper_title"), self.language_controller.get("dialog.info.super_wallpaper_message") ) #
+        # set scheduler source to FAVS_DIR
+        logging.info("Super/Best Wallpapers source selected")
+        self.scheduler.source = str(SUPER_WALLPAPER_DIR)
+        # update source buttons active state (super wallpaper)
+        self._update_source_buttons_active(self.scheduler.source)
+        # update status
+        self._set_status(self.language_controller.get("status.genaral.scheduler_set_for_super_collection")) #
+        # updating range to wallpaper by default
+        if not self.scheduler.range_type:
+            self.active_ranges("all")
 
     def on_favorite_wallpapers(self):
         if not self.isLogin:
@@ -1034,14 +1046,15 @@ class TapeciarniaApp(QMainWindow):
             # set scheduler source to FAVS_DIR
             logging.info("Favorite Wallpapers source selected")
             self.scheduler.source = str(FAVS_DIR)
+            self.scheduler.set_api_url(self.config.get_frvt_wallpaper_url())
             # update source buttons active state (fvorites)
             self._update_source_buttons_active(self.scheduler.source)
             # update status
             self._set_status(self.language_controller.get("status.genaral.scheduler_set_for_favorite_collection")) #
-            # updating range to wallpaper by default
-            self.scheduler.set_range("wallpaper")
-            # disable other range buttons
-            # self._disable_other_range()
+
+            # updating range to wallpaper by default if no range is selected
+            if not self.scheduler.range_type:
+                self.active_ranges("all")
     
     def _disable_other_range(self):
         '''
@@ -1081,10 +1094,8 @@ class TapeciarniaApp(QMainWindow):
         self.scheduler.source = str(SAVES_DIR)
         self._update_source_buttons_active(self.scheduler.source)
         # updating range to all by default
-        self.scheduler.set_range("all")
-        self._update_range_buttons_active("all")
-        # enable other range buttons
-        self._enable_other_range()
+        if not self.scheduler.range_type:
+            self.active_ranges("all")
         # upate status
         self._set_status(self.language_controller.get("status.genaral.scheduler_set_to_use_entire_collection")) #
         logging.info("Scheduler set to use entire collection")
@@ -1117,8 +1128,8 @@ class TapeciarniaApp(QMainWindow):
         else:
             self._set_status(self.language_controller.get("status.genaral.range_with_range_type").format(range_type=self.get_range_button_text_by_type(range_type))) #
 
-        self._update_range_buttons_active(range_type)
-        self.config.set_range_preference(range_type)
+
+        self.active_ranges(range_type=range_type)
         logging.debug(f"Range preference saved: {range_type}")
 
     def on_scheduler_toggled(self):
@@ -1158,6 +1169,9 @@ class TapeciarniaApp(QMainWindow):
             # self.scheduler.start(self.scheduler.source, val)
         # self._set_status(f"Scheduler interval: {val} min")
     
+    def set_interval(self,interval:int):
+        self.ui.interval_spinBox.setValue(interval)
+
     def update_ui_language(self):
         self.ui.emailInput.setPlaceholderText(f"{self.language_controller.get("auth.emailPlaceholder")}")
         self.ui.passwordInput.setPlaceholderText(f"{self.language_controller.get("auth.passwordPlaceholder")}")
@@ -1470,18 +1484,57 @@ class TapeciarniaApp(QMainWindow):
         else:
             self._apply_image(str(file_path))
 
-    def _apply_wallpaper_from_scheduler(self,file_path: Path=None,image_data:list[str,bytes]=None):
+    def _apply_wallpaper_from_scheduler(self,file_path:Path=None,image_data:list[str,bytes]=None):
         if self.scheduler.source == str(SAVES_DIR):
             if file_path:
                 self._apply_wallpaper_from_path(file_path=file_path)
+                
         elif self.scheduler.source == str(FAVS_DIR):
             if image_data:
-                path = conver_bytes_to_tmp_path(image_data.get("data"))
-                self.controller.start_image(path)
+                url = image_data.get("url")
+                ext = get_file_extension_from_url(url)
+                if ext == ".mp4":
+                    path = conver_bytes_to_tmp_path(image_data.get("data"),ext=ext)
+                    self.controller.start_video(path)
+
+                elif ext == ".jpg":
+
+                    path = conver_bytes_to_tmp_path(image_data.get("data"),ext=ext)
+                    self.controller.start_image(path)
+                
+                else:
+                    logging.critical("Invalide file type recived from sheduler. Wallpaper cannot be started")
+
                 self._set_status(self.language_controller.get("status.genaral.image_applied").format(gen_name_from_url(image_data.get("url")))) #
                 self._update_url_input(image_data.get("url"))
+
+            else:
+                logging.warning("No Image data recevied from scheduler")
+
+        elif self.scheduler.source == str(SUPER_WALLPAPER_DIR):
+            
+            if image_data:
+                url = image_data.get("url")
+                ext = get_file_extension_from_url(url)
+                
+                if ext == ".mp4":
+                    path = conver_bytes_to_tmp_path(image_data.get("data"),ext=ext)
+                    self.controller.start_video(path)
+
+                elif ext == ".jpg":
+                    path = conver_bytes_to_tmp_path(image_data.get("data"),ext=ext)
+                    self.controller.start_image(path)
+                else:
+                    logging.critical("Invalide file type recived from sheduler. Wallpaper cannot be started")
+
+
+                self._set_status(self.language_controller.get("status.genaral.image_applied").format(gen_name_from_url(image_data.get("url")))) #
+                self._update_url_input(image_data.get("url"))
+
+            else:
+                logging.warning("No Image data recevied from scheduler")
         else:
-            pass
+            logging.error("Unknown source selected for sheduler!!")
                 
 
     def _apply_video(self, video_path: str):
@@ -1602,7 +1655,7 @@ class TapeciarniaApp(QMainWindow):
         """Update source button styles"""
         logging.debug(f"Updating source button styles for: {active_source}")
         sources = {
-            "super": getattr(self.ui, "super_wallpaper_btn", None),
+            str(SUPER_WALLPAPER_DIR): getattr(self.ui, "super_wallpaper_btn", None),
             str(FAVS_DIR): getattr(self.ui, "fvrt_wallpapers_btn", None),
             str(SAVES_DIR): getattr(self.ui, "added_wallpaper_btn", None)
         }
@@ -1838,6 +1891,40 @@ class TapeciarniaApp(QMainWindow):
         self._set_status(self.language_controller.get("status.genaral.download_failed")) #
         self.set_buttons(True)
 
+    def active_ranges(self,range_type:str):
+        if range_type == "wallpaper":
+            self._active_range_wallpaper()
+        elif range_type == "mp4":
+            self._active_range_mp4()
+        elif range_type == "all":
+            self._active_range_all()
+        else:
+            logging.error("")
+
+    def _active_range_all(self):
+        self._update_range_buttons_active("all")
+        self.config.set_range_preference("all")
+        self.scheduler.set_range("all")
+        if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("all"))
+
+    def _active_range_wallpaper(self):
+        self._update_range_buttons_active("wallpaper")
+        self.config.set_range_preference("wallpaper")
+        self.scheduler.set_range("wallpaper")
+        if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("wallpaper"))
+
+    def _active_range_mp4(self):
+        self._update_range_buttons_active("mp4")
+        self.config.set_range_preference("mp4")
+        self.scheduler.set_range("mp4")
+        if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("mp4"))
+
+            
+
+
     # Settings management
     def _load_settings(self):
         """Load saved settings"""
@@ -1852,7 +1939,7 @@ class TapeciarniaApp(QMainWindow):
         enabled ,source, interval, range_type = self.config.get_scheduler_settings()
 
         # Load range preference
-        logging.info(f"Loaded range preference: {range_type}")
+        logging.info(f"loaded sheduler settings source: {source} interval:{interval} range:{range_type}")
         self.scheduler.set_range(range_type)
         self._update_range_buttons_active(range_type)
         self.current_range = range_type
@@ -1877,24 +1964,43 @@ class TapeciarniaApp(QMainWindow):
             if source == str(SAVES_DIR):
                 self._update_source_buttons_active(source)
 
-            elif source == "super":
+            elif source == str(SUPER_WALLPAPER_DIR):
+                # 
+                self.scheduler.source = str(SUPER_WALLPAPER_DIR)
                 self._update_source_buttons_active(source)
-                self.scheduler.source = "super"
+                # 
+                if not range_type:
+                    self._update_range_buttons_active("all")
+                    self.scheduler.set_range("all")
+                    range_type = "all"
+                    self.scheduler.set_api_url(self.config.get_super_wallpaper_url("all"))
+                else:
+                    self._update_range_buttons_active(range_type)
+                    self.scheduler.set_range(range_type)
+                    self.scheduler.set_api_url(self.config.get_super_wallpaper_url(range_type))
+
 
             elif source == str(FAVS_DIR):
                 if self.isLogin:
                     self._update_source_buttons_active(source)
+                    # self.scheduler.set_api_url(self.config.set_fvrt_wallpaper_url(self.user_name))
                 else:
-                    self.scheduler.source = str(SAVES_DIR)
-                    self._update_source_buttons_active(str(SAVES_DIR))
+                    self.scheduler.source = str(SUPER_WALLPAPER_DIR)
+                    self._update_source_buttons_active(self.scheduler.source)
+                    self.active_ranges("all")
+                    self.set_interval(5)
 
             else:
                 logger.warning(f"Unknown scheduler source: {source}, defaulting to None")
                 self._update_source_buttons_active(None)
                 
         else:
-            logging.info("No scheduler source set, changing source button style to None")
-            self._update_source_buttons_active(None)
+            # set the source to super range all interval to 5 min
+            self.scheduler.source = str(SUPER_WALLPAPER_DIR)
+            self._update_source_buttons_active(self.scheduler.source)
+            self.active_ranges("all")
+            self.set_interval(5)
+            logging.info("No scheduler source set, changing to default (source: super range: all interval: 5 min)")
             
         
         logging.info(f"Loaded scheduler settings - source: {source}, range: {range_type}, interval: {interval}, enabled: {enabled}")
@@ -2040,7 +2146,8 @@ class TapeciarniaApp(QMainWindow):
                 # str(data),
             ) #
             logging.info("Login successfull")
-            self.scheduler.set_api_url(f"https://www.tapeciarnia.pl/program/wybierz_tapete_2025.php?user={self.user_name}&pokaz=ulubione_tap&x={self.x}&y={self.y}&hd=1")
+            self.config.set_fvrt_wallpaper_url(user_name=self.user_name)
+            self.scheduler.set_api_url(self.config.get_frvt_wallpaper_url())
 
 
             # hide the input areas and change the text on log in bnt to log out
@@ -2100,6 +2207,8 @@ class TapeciarniaApp(QMainWindow):
     def _handel_mouse_press_username(self,e):
         if self.user_name:
             webbrowser.open_new_tab(f"https://www.tapeciarnia.pl/user_{self.user_name}")
+    def _handel_mouse_press_logo(self,e):
+        webbrowser.open_new_tab(f"https://www.tapeciarnia.pl")
 
     def handle_username(self) -> None:
         if self.user_name:

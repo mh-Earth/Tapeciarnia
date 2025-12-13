@@ -137,6 +137,7 @@
                 "scheduler_started_but_failed":"Scheduler started but failed to apply first wallpaper",
                 "scheduler_stopped": "Scheduler stopped",
                 "scheduler_set_for_favorite_collection":"Scheduler set for Favorite Collection",
+                "scheduler_set_for_super_collection":"Scheduler set for Super Wallpaper Collection",
                 "scheduler_set_to_use_entire_collection":"Scheduler set to use entire collection",
                 "range":"Range set to {range_type} (no files found)",
                 "range_with_file":"Range set to: {} ({} files)",
