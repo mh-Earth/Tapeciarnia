@@ -83,8 +83,8 @@ def main():
         # translator = GlobalButtonTranslator.instance()
 
  
-        if not auth_of_devloper():
-            raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
+        # if not auth_of_devloper():
+        #     raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
         # Single instance wrapper
 
         # If this is a secondary instance → exit now

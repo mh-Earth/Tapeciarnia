@@ -12,7 +12,7 @@ import requests
 import time
 from collections import deque
 
-
+from conts import RangeTypes
 
 class UnifiedWallpaperScheduler:
     """
@@ -203,15 +203,15 @@ class UnifiedWallpaperScheduler:
             folders = [Path(source)]
 
         if self.range_type != None:
-            if self.range_type.lower() == "mp4":
+            if self.range_type.lower() == RangeTypes.ANIMATED:
                 exts = self.config.get_valid_video_extensions()
-            elif self.range_type.lower() == "wallpaper":
+            elif self.range_type.lower() == RangeTypes.STATIC:
                 exts = self.config.get_valid_image_extensions()
-            elif self.range_type.lower() == "all":
+            elif self.range_type.lower() == RangeTypes.ALL:
                 exts = self.config.get_all_valid_extensions()
             else:
                 logging.warning(f"Invalid range type found: {self.range_type}. Switching to all range")
-                self.set_range("all")
+                self.set_range(RangeTypes.ALL)
                 exts = self.config.get_all_valid_extensions()
 
             for f in folders:
@@ -263,11 +263,11 @@ class OnlineWallpaperScheduler(QThread):
     #               HELPER METHODS
     # ---------------------------------------------------------
     def filter_urls_by_range_type(self,range_type:str):
-        if range_type.lower() == "mp4":
+        if range_type.lower() == RangeTypes.ANIMATED:
             self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_video_extensions()))]
-        elif range_type.lower() == "wallpaper":
+        elif range_type.lower() == RangeTypes.STATIC:
             self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_image_extensions()))]
-        elif range_type.lower() == "all":
+        elif range_type.lower() == RangeTypes.ALL:
             pass
         else:
             logging.warning(f"Invali type found: {range_type}. No filtering applied")
@@ -353,7 +353,7 @@ class OnlineWallpaperScheduler(QThread):
                     continue
                 self.url_list.append(url)
 
-            self.filter_urls_by_range_type(self.config.get_range_preference() or "all")
+            self.filter_urls_by_range_type(self.config.get_range_preference() or RangeTypes.ALL)
 
             if len(self.url_list) <= 0:
                 self.sendStopSignal.emit(self.traslator.get("status.genaral.empty_frvt_collection"))

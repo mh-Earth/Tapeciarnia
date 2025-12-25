@@ -45,7 +45,7 @@ Thumbs.db
 ~$*
 *.tmp
 .~lock.*
-
+*.lock
 # Project specific
 download_path.tmp
 *.mp4

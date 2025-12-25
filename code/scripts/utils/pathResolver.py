@@ -49,7 +49,7 @@ def fast_resolve_tapeciarnia_redirect(url: str) -> str | None:
         return None
 
     except Exception as e:
-        print(f"Redirect resolution failed: {e}")
+        logging.error(f"Redirect resolution failed: {e}")
         return None
 
 

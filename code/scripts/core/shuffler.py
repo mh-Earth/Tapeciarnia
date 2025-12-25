@@ -3,7 +3,7 @@ import logging,requests,json
 from PySide6.QtWidgets import QApplication
 from utils.singletons import get_config
 import socket
-
+from conts import RangeTypes
 class Shuffler(QThread):
 
     success = Signal(str)
@@ -105,7 +105,7 @@ class Shuffler(QThread):
         
         BASE_URL = "https://tapeciarnia.pl/program/wybierz_tapete_2025.php"
         # 1. Determine the 'pokaz' parameter based on the type of wallpaper
-        pokaz_value = "all_mp4" if is_animated else "all"
+        pokaz_value = "all_mp4" if is_animated else "all_img"
         
         # 2. Construct the full URL with GET parameters (pokaz, x, y)
         # Note: Although the user wants POST for variables, the base structure
@@ -145,7 +145,7 @@ class Shuffler(QThread):
                 
                 # Assuming the JSON response structure contains a key like 'url' or 'download_link'
                 # Adjust the key 'url' based on the actual response structure from the API
-                download_url:str = data.get('url') 
+                download_url:str = data.get('url',"") 
                 
 
                 if not is_animated:

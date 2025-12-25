@@ -48,7 +48,7 @@ from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
 from utils.singletons import get_config,get_language_controller
 # Import models
-
+from conts import RangeTypes,LoginPayload
 # Import UI components
 # from .dialogs import ShutdownProgressDialog
 
@@ -677,18 +677,18 @@ class TapeciarniaApp(QMainWindow):
 
         # Range buttons - with double-click support
         if hasattr(self.ui, "range_all_bnt"):
-            self.ui.range_all_bnt.clicked.connect(lambda: self.on_range_changed("all"))
-            self.ui.range_all_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked("all")
+            self.ui.range_all_bnt.clicked.connect(lambda: self.on_range_changed(RangeTypes.ALL))
+            self.ui.range_all_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked(RangeTypes.ALL)
             logging.debug("Range all button connected")
         
         if hasattr(self.ui, "range_wallpaper_bnt"):
-            self.ui.range_wallpaper_bnt.clicked.connect(lambda: self.on_range_changed("wallpaper"))
-            self.ui.range_wallpaper_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked("wallpaper")
+            self.ui.range_wallpaper_bnt.clicked.connect(lambda: self.on_range_changed(RangeTypes.STATIC))
+            self.ui.range_wallpaper_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked(RangeTypes.STATIC)
             logging.debug("Range wallpaper button connected")
         
         if hasattr(self.ui, "range_mp4_bnt"):
-            self.ui.range_mp4_bnt.clicked.connect(lambda: self.on_range_changed("mp4"))
-            self.ui.range_mp4_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked("mp4")
+            self.ui.range_mp4_bnt.clicked.connect(lambda: self.on_range_changed(RangeTypes.ANIMATED))
+            self.ui.range_mp4_bnt.mouseDoubleClickEvent = lambda e: self.on_range_double_clicked(RangeTypes.ANIMATED)
             logging.debug("Range MP4 button connected")
 
         # Scheduler controls
@@ -814,9 +814,9 @@ class TapeciarniaApp(QMainWindow):
                     logging.warning(f"No files found for source: {source}, range: {range_type}")
                     
                     # Determine the error message based on settings
-                    if range_type == "mp4":
+                    if range_type == RangeTypes.ANIMATED:
                         error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.no_mp4")
-                    elif range_type == "wallpaper":
+                    elif range_type == RangeTypes.STATIC:
                         error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.no_wallpapers")
                     else:  # all
                         error_msg = self.language_controller.get("dialog.warning.no_wallpaper_found_for_scheduler_messges.all")
@@ -1029,7 +1029,7 @@ class TapeciarniaApp(QMainWindow):
         self._set_status(self.language_controller.get("status.genaral.scheduler_set_for_super_collection")) #
         # updating range to wallpaper by default
         if not self.scheduler.range_type:
-            self.active_ranges("all")
+            self.active_ranges(RangeTypes.ALL)
 
     def on_favorite_wallpapers(self):
         if not self.isLogin:
@@ -1054,14 +1054,14 @@ class TapeciarniaApp(QMainWindow):
 
             # updating range to wallpaper by default if no range is selected
             if not self.scheduler.range_type:
-                self.active_ranges("all")
+                self.active_ranges(RangeTypes.ALL)
     
     def _disable_other_range(self):
         '''
         Disable other range (all,MP4) when scheduler is set to online as online only give static images.
 
         '''
-        self._update_range_buttons_active("wallpaper")
+        self._update_range_buttons_active(RangeTypes.STATIC)
         self.ui.range_all_bnt.setEnabled(False)
         self.ui.range_mp4_bnt.setEnabled(False)
     
@@ -1070,7 +1070,7 @@ class TapeciarniaApp(QMainWindow):
         Disable other range (all,MP4) when scheduler is set to online as online only give static images.
 
         '''
-        # self._update_range_buttons_active("wallpaper")
+        # self._update_range_buttons_active(RangeTypes.STATIC)
         self.ui.range_all_bnt.setEnabled(True)
         self.ui.range_mp4_bnt.setEnabled(True)
     
@@ -1095,7 +1095,7 @@ class TapeciarniaApp(QMainWindow):
         self._update_source_buttons_active(self.scheduler.source)
         # updating range to all by default
         if not self.scheduler.range_type:
-            self.active_ranges("all")
+            self.active_ranges(RangeTypes.ALL)
         # upate status
         self._set_status(self.language_controller.get("status.genaral.scheduler_set_to_use_entire_collection")) #
         logging.info("Scheduler set to use entire collection")
@@ -1103,9 +1103,9 @@ class TapeciarniaApp(QMainWindow):
     def get_range_button_text_by_type(self, range_type):
         """Get range button text by type"""
         range_texts = {
-            "all": self.language_controller.get("settings.rangeAllButton"),
-            "wallpaper": self.language_controller.get("settings.rangeWallpaperButton"),
-            "mp4": self.language_controller.get("settings.rangeMp4Button"),
+            RangeTypes.ALL: self.language_controller.get("settings.rangeAllButton"),
+            RangeTypes.STATIC: self.language_controller.get("settings.rangeWallpaperButton"),
+            RangeTypes.ANIMATED: self.language_controller.get("settings.rangeMp4Button"),
         }
         return range_texts.get(range_type, "Unknown Range")
 
@@ -1596,7 +1596,7 @@ class TapeciarniaApp(QMainWindow):
                 self.customMessageBox.critical(self, "Error", f"Failed to apply image: {fallback_error}") #
 
     # Utility methods - FIXED: Proper media type separation
-    def _get_media_files(self, media_type="all"):
+    def _get_media_files(self, media_type=RangeTypes.ALL):
         """Get media files based on current range and media type - FIXED LOGIC"""
         logging.debug(f"Getting media files - type: {media_type}, range: {self.current_range}")
         files = []
@@ -1620,9 +1620,9 @@ class TapeciarniaApp(QMainWindow):
         logging.debug(f"Using source: {source_type}, folders: {[str(f) for f in search_folders]}")
         
         # Define extensions based on media type
-        if media_type == "mp4":
+        if media_type == RangeTypes.ANIMATED:
             extensions = tuple(self.config.get_valid_video_extensions())
-        elif media_type == "wallpaper":
+        elif media_type == RangeTypes.STATIC:
             extensions = tuple(self.config.get_valid_image_extensions())
         else:
             extensions = tuple(self.config.get_all_valid_extensions())
@@ -1640,8 +1640,8 @@ class TapeciarniaApp(QMainWindow):
         return files
 
     def _get_range_display_name(self):
-        range_names = {"all": "All", "wallpaper": "Wallpaper", "mp4": "MP4"}
-        display_name = range_names.get(self.current_range, "All")
+        range_names = {RangeTypes.ALL: RangeTypes.ALL, RangeTypes.STATIC: RangeTypes.STATIC, RangeTypes.ANIMATED: RangeTypes.ANIMATED}
+        display_name = range_names.get(self.current_range, RangeTypes.ALL)
         logging.debug(f"Range display name: {display_name}")
         return display_name
 
@@ -1679,9 +1679,9 @@ class TapeciarniaApp(QMainWindow):
         """Update range button styles"""
         logging.debug(f"Updating range button styles for: {active_range}")
         range_buttons = {
-            "all": getattr(self.ui, "range_all_bnt", None),
-            "wallpaper": getattr(self.ui, "range_wallpaper_bnt", None),
-            "mp4": getattr(self.ui, "range_mp4_bnt", None)
+            RangeTypes.ALL: getattr(self.ui, "range_all_bnt", None),
+            RangeTypes.STATIC: getattr(self.ui, "range_wallpaper_bnt", None),
+            RangeTypes.ANIMATED: getattr(self.ui, "range_mp4_bnt", None)
         }
         
         for btn in range_buttons.values():
@@ -1833,9 +1833,10 @@ class TapeciarniaApp(QMainWindow):
         Perform local animated shuffle (existing functionality)
         """
         logging.info("Performing local animated shuffle")
-        video_files = self._get_media_files(media_type="mp4")
+        video_files = self._get_media_files(media_type=RangeTypes.ANIMATED)
         
         if not video_files:
+            self._set_status(self.language_controller.get("dialog.info.no_video_found_in_local_message"))
             logging.warning("No local animated wallpapers found")
             self.customMessageBox.information(
                 self, 
@@ -1861,9 +1862,10 @@ class TapeciarniaApp(QMainWindow):
         Perform local static shuffle (existing functionality)
         """
         logging.info("Performing local static shuffle")
-        image_files = self._get_media_files(media_type="wallpaper")
+        image_files = self._get_media_files(media_type=RangeTypes.STATIC)
         
         if not image_files:
+            self._set_status(self.language_controller.get("dialog.info.no_wallpaper_found_in_local_message"))
             logging.warning("No local static wallpapers found")
             self.customMessageBox.information(
                 self, 
@@ -1892,35 +1894,35 @@ class TapeciarniaApp(QMainWindow):
         self.set_buttons(True)
 
     def active_ranges(self,range_type:str):
-        if range_type == "wallpaper":
+        if range_type == RangeTypes.STATIC:
             self._active_range_wallpaper()
-        elif range_type == "mp4":
+        elif range_type == RangeTypes.ANIMATED:
             self._active_range_mp4()
-        elif range_type == "all":
+        elif range_type == RangeTypes.ALL:
             self._active_range_all()
         else:
             logging.error("")
 
     def _active_range_all(self):
-        self._update_range_buttons_active("all")
-        self.config.set_range_preference("all")
-        self.scheduler.set_range("all")
+        self._update_range_buttons_active(RangeTypes.ALL)
+        self.config.set_range_preference(RangeTypes.ALL)
+        self.scheduler.set_range(RangeTypes.ALL)
         if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
-            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("all"))
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url(RangeTypes.ALL))
 
     def _active_range_wallpaper(self):
-        self._update_range_buttons_active("wallpaper")
-        self.config.set_range_preference("wallpaper")
-        self.scheduler.set_range("wallpaper")
+        self._update_range_buttons_active(RangeTypes.STATIC)
+        self.config.set_range_preference(RangeTypes.STATIC)
+        self.scheduler.set_range(RangeTypes.STATIC)
         if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
-            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("wallpaper"))
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url(RangeTypes.STATIC))
 
     def _active_range_mp4(self):
-        self._update_range_buttons_active("mp4")
-        self.config.set_range_preference("mp4")
-        self.scheduler.set_range("mp4")
+        self._update_range_buttons_active(RangeTypes.ANIMATED)
+        self.config.set_range_preference(RangeTypes.ANIMATED)
+        self.scheduler.set_range(RangeTypes.ANIMATED)
         if self.scheduler.source == str(SUPER_WALLPAPER_DIR) :
-            self.scheduler.set_api_url(self.config.get_super_wallpaper_url("mp4"))
+            self.scheduler.set_api_url(self.config.get_super_wallpaper_url(RangeTypes.ANIMATED))
 
             
 
@@ -1970,10 +1972,10 @@ class TapeciarniaApp(QMainWindow):
                 self._update_source_buttons_active(source)
                 # 
                 if not range_type:
-                    self._update_range_buttons_active("all")
-                    self.scheduler.set_range("all")
-                    range_type = "all"
-                    self.scheduler.set_api_url(self.config.get_super_wallpaper_url("all"))
+                    self._update_range_buttons_active(RangeTypes.ALL)
+                    self.scheduler.set_range(RangeTypes.ALL)
+                    range_type = RangeTypes.ALL
+                    self.scheduler.set_api_url(self.config.get_super_wallpaper_url(RangeTypes.ALL))
                 else:
                     self._update_range_buttons_active(range_type)
                     self.scheduler.set_range(range_type)
@@ -1987,7 +1989,7 @@ class TapeciarniaApp(QMainWindow):
                 else:
                     self.scheduler.source = str(SUPER_WALLPAPER_DIR)
                     self._update_source_buttons_active(self.scheduler.source)
-                    self.active_ranges("all")
+                    self.active_ranges(RangeTypes.ALL)
                     self.set_interval(5)
 
             else:
@@ -1998,7 +2000,7 @@ class TapeciarniaApp(QMainWindow):
             # set the source to super range all interval to 5 min
             self.scheduler.source = str(SUPER_WALLPAPER_DIR)
             self._update_source_buttons_active(self.scheduler.source)
-            self.active_ranges("all")
+            self.active_ranges(RangeTypes.ALL)
             self.set_interval(5)
             logging.info("No scheduler source set, changing to default (source: super range: all interval: 5 min)")
             
@@ -2094,13 +2096,9 @@ class TapeciarniaApp(QMainWindow):
             password = self.ui.passwordInput.text().strip()
 
             if email and password:
-                url = "https://tapeciarnia.pl/program/login_2025.php"
-                payload = {
-                "login": email, # aka username
-                "haslo": password, # aka password
-                "lang": self.config.get_language()
-                }
-
+                url = self.config.get_loging_url()
+                
+                payload = LoginPayload(username=email,password=password,language=self.config.get_language()).payload()
                 logging.debug(payload)
                 login = LoginWorker(url=url, payload=payload,method="GET")
                 login.success.connect(self._on_login_success)
@@ -2198,8 +2196,8 @@ class TapeciarniaApp(QMainWindow):
             self.scheduler.source = str(SAVES_DIR)
             self._update_source_buttons_active(str(SAVES_DIR))
             # reset range to all
-            self.scheduler.range_type = "all"
-            self._update_range_buttons_active("all")
+            self.scheduler.range_type = RangeTypes.ALL
+            self._update_range_buttons_active(RangeTypes.ALL)
             self.config.set_scheduler_settings(enabled=True,source=self.scheduler.source,interval=self.scheduler.interval_minutes,range_type=self.scheduler.range_type)
             
 

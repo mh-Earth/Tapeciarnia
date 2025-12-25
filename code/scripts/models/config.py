@@ -2,7 +2,7 @@ from PySide6.QtCore import QSettings
 
 from utils.system_utils import current_system_locale,get_primary_screen_dimensions
 import logging
-
+from conts import RangeTypes
 
 class Config:
     def __init__(self):
@@ -14,6 +14,7 @@ class Config:
         self.ensure_valid_image_extensions()
         self.ensure_valid_video_extensions()
         self.set_default_super_wallpaper_urls()
+        self.set_login_url("https://tapeciarnia.pl/program/login_2025.php")
         logging.info("QSettings backend initialized")
 
     @staticmethod
@@ -45,7 +46,7 @@ class Config:
         enabled:bool = self.get("scheduler_enabled", False)
         source:str = self.get("scheduler_source")
         interval:int = int(self.get("scheduler_interval", 30))
-        range_type:str = self.get("scheduler_range_type","all")
+        range_type:str = self.get("scheduler_range_type",RangeTypes.ALL)
         return enabled, source, interval, range_type
 
     def set_scheduler_settings(self,enabled:bool, source:str, interval:int, range_type:str):
@@ -68,7 +69,7 @@ class Config:
         self.set("language", lang)
 
     def get_range_preference(self) -> str:
-        return self.get("range_preference", "all")
+        return self.get("range_preference", RangeTypes.ALL)
 
     def set_range_preference(self, pref: str):
         self.set("range_preference", pref)
@@ -88,6 +89,12 @@ class Config:
     
     def get_login(self):
         return self.get("login","")
+    
+    def set_login_url(self,url):
+        self.set("loging_url",url)
+    
+    def get_loging_url(self) -> str:
+        return self.get("login_url","https://tapeciarnia.pl/program/login_2025.php")
     
     def set_login_key(self,key:str):
         self.set("login_key" ,str(key))
@@ -288,32 +295,32 @@ class Config:
     # -------------------------------
 
     def set_super_wallpaper_url(self,url:str,type:str) -> None:
-        if type == "all":
+        if type == RangeTypes.ALL:
             self.set("super_wallpaper_url_all",url)
         
-        elif type == "wallpaper":
+        elif type == RangeTypes.STATIC:
             self.set("super_wallpaper_url_wallpaper",url)
         
-        elif type == "mp4":
+        elif type == RangeTypes.ANIMATED:
             self.set("super_wallpaper_url_mp4",url)
 
     def get_super_wallpaper_url(self,type:str) -> str:
-        if type == "all":
+        if type == RangeTypes.ALL:
             return self.get("super_wallpaper_url_all","")
         
-        elif type == "wallpaper":
+        elif type == RangeTypes.STATIC:
             return self.get("super_wallpaper_url_wallpaper","")
         
-        elif type == "mp4":
+        elif type == RangeTypes.ANIMATED:
             return self.get("super_wallpaper_url_mp4","")
         
         return ""
     
     def set_default_super_wallpaper_urls(self) -> None:
         urls = {
-            "mp4": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_mp4&x={x}&y={y}&lang={lang}",
-            "wallpaper": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_img&x={x}&y={y}&lang={lang}",
-            "all": "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all&x={x}&y={y}&lang={lang}"
+            RangeTypes.ANIMATED: "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_mp4&x={x}&y={y}&lang={lang}",
+            RangeTypes.STATIC: "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all_img&x={x}&y={y}&lang={lang}",
+            RangeTypes.ALL: "https://tapeciarnia.pl/program/wybierz_tapete_2025.php?pokaz=all&x={x}&y={y}&lang={lang}"
         }
 
         x,y = get_primary_screen_dimensions()

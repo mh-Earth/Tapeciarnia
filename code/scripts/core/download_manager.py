@@ -1,9 +1,6 @@
 import time
 import os
-import platform
-import yt_dlp
 from pathlib import Path
-from typing import Optional
 import logging
 
 from PySide6.QtCore import QThread, Signal

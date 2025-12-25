@@ -466,7 +466,26 @@ def get_file_extension_from_url(url: str) -> str:
 
     except Exception as e:
         # Handle potential parsing or decoding errors gracefully
-        print(f"Error processing URL '{url}': {e}")
+        logging.error(f"Error processing URL '{url}': {e}")
         return ""
+
+
+
+def get_windows_version():
+    if sys.platform != "win32":
+        return "Not Windows"
+
+    version = sys.getwindowsversion()
+    build = version.build
+
+    if build >= 22000:
+        return "Windows11"
+    elif build >= 10240:
+        return "Windows10"
+    elif build >= 7600:
+        return "Windows 7 / 8 / 8.1"
+    else:
+        return "Older Windows"
+
 
 # --- Example Usage ---

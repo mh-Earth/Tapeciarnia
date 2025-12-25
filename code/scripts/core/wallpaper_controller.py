@@ -8,7 +8,7 @@ import time
 
 from PySide6.QtWidgets import QMessageBox
 
-from utils.system_utils import which, set_static_desktop_wallpaper
+from utils.system_utils import which, set_static_desktop_wallpaper,get_windows_version
 from utils.path_utils import get_weebp_path, get_mpv_path, get_tools_path
 from utils.command_handler import run_and_forget_silent
 
@@ -59,12 +59,17 @@ class WallpaperController:
             return self._run_refresh()
 
         refresh_exe = os.path.join(self.tools_path, "refresh.exe")
+        # refresh.exe is a Windows 11 utility that brings desktop icons to the foreground (above the video wallpaper)
         run_and_forget_silent([refresh_exe, f"0x{view_id}"])
         logging.info("Launched refresh.exe")
 
     def run_optional_tools(self):
         # self._run_auto_pause()
-        self._run_refresh()
+        if get_windows_version() == "Windows11":
+            self._run_refresh()
+        else:
+            pass
+
 
     # ---------------------------------------------------------
     #  STOP

@@ -8,6 +8,7 @@ from models.config import Config
 from utils.path_utils import BASE_DIR
 from pprint import pprint
 from utils.system_utils import isBundle
+
 class LanguageController(QObject):
     # emit a signal when language is changed
     language_changed = Signal()
@@ -144,7 +145,7 @@ class LanguageController(QObject):
         lang_code = self.config.get_language()
         logging.info(f"Setting up initial language: {lang_code}")
         index = combo_box.findText(lang_code.upper())
-        print(index)
+
         if index != -1:
             combo_box.setCurrentIndex(index)
             self.lang = self.get_language_by_name(lang_code)

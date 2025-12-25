@@ -12,8 +12,7 @@ payload = {
 "lang": "pl"
 }
 
-url = https://tapeciarnia.pl/program/login_2025.php
-?login=gmail&key=36c202e3ff667dcdf58b2c9fd07a5c8a&lang=pl
+url = https://tapeciarnia.pl/program/login_2025.php?login=gmail&key=test222&lang=pl
 
 access_token
 refresh_token (optional)
