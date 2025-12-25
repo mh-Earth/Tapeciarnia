@@ -2,7 +2,7 @@ from PySide6.QtCore import QSettings
 
 from utils.system_utils import current_system_locale,get_primary_screen_dimensions
 import logging
-from conts import RangeTypes
+from models.constants import RangeTypes
 
 class Config:
     def __init__(self):

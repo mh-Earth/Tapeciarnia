@@ -3,7 +3,7 @@ import logging,requests,json
 from PySide6.QtWidgets import QApplication
 from utils.singletons import get_config
 import socket
-from conts import RangeTypes
+from models.constants import RangeTypes
 class Shuffler(QThread):
 
     success = Signal(str)

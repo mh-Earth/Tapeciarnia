@@ -48,7 +48,7 @@ from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
 from utils.singletons import get_config,get_language_controller
 # Import models
-from conts import RangeTypes,LoginPayload
+from models.constants import RangeTypes,LoginPayload
 # Import UI components
 # from .dialogs import ShutdownProgressDialog
 

@@ -12,7 +12,7 @@ import requests
 import time
 from collections import deque
 
-from conts import RangeTypes
+from models.constants import RangeTypes
 
 class UnifiedWallpaperScheduler:
     """
