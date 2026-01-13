@@ -1,7 +1,7 @@
 [project]
 name = "tepeciarnia"
 version = "1.0.0"
-description = "Wallpaper engin for tepeciarnia.pl"
+description = "Wallpaper engine for tepeciarnia.pl"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -60,7 +60,7 @@ def test_loging_success():
     assert validate_response(LOGING_SUCCESSFULL_SCHEMA,data) == True
 
 def test_loging_faild():
-    password = "test222aaaa"
+    password = "test222xxxx"
     username = "gmail"
     data = login(username,password)
     assert validate_response(LOGIN_FALID_SCHEMA,data) == True

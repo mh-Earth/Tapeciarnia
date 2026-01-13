@@ -40,7 +40,9 @@ def parse_uri_command(uri_string):
     - tapeciarnia:https://image.jpg
     - tapeciarnia:mp4_url:https://video.mp4
     - tapeciarnia:https://tapeciarnia.pl/program/pobierz_jpeg_v2.php?id=123
-    - tapeciarnia:<ID>   → allowed always
+    - tapeciarnia:<ID>
+    - tapeciarnia://<ID>
+    - tapeciarnia://id-mp4/<ID>
     """
 
     try:
@@ -53,60 +55,75 @@ def parse_uri_command(uri_string):
         action = None
         params = {}
 
+        netloc = parsed_uri.netloc.strip()
+        path = parsed_uri.path.strip("/")
+
         # --------------------------------------------------------------
-        # CUSTOM FORMAT
+        # 1) tapeciarnia://<ID>
         # --------------------------------------------------------------
-        if not parsed_uri.netloc and not parsed_uri.query and parsed_uri.path:
+        if netloc.isdigit():
+            action = "id"
+            params = {"id": netloc}
+            return action, params
+
+        # --------------------------------------------------------------
+        # 2) tapeciarnia://id-mp4/<ID>
+        # --------------------------------------------------------------
+        if netloc == "id-mp4" and path.isdigit():
+            action = "mp4_id"
+            params = {"id": path}
+            return action, params
+
+        # --------------------------------------------------------------
+        # CUSTOM FORMAT (tapeciarnia:<payload>)
+        # --------------------------------------------------------------
+        if not netloc and not parsed_uri.query and parsed_uri.path:
             payload = parsed_uri.path.strip()
 
-            # 1) Pure numeric ID → always allowed
-            if re.fullmatch(r"\d+", payload):
+            # Pure numeric ID
+            if payload.isdigit():
                 action = "id"
                 params = {"id": payload}
                 return action, params
 
-            # 2) Format: tapeciarnia:action:URL
+            # action:URL
             if ":" in payload and not payload.lower().startswith("http"):
-                parts = payload.split(":", 1)
-                action = parts[0].strip()
-                url = parts[1].strip()
+                action, url = payload.split(":", 1)
+                action = action.strip()
+                url = url.strip()
 
-                # Domain restriction
                 if not _is_allowed_domain(url):
-                    logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+                    logger.warning("Blocked: URL not from allowed domain.")
                     return None, None
 
                 params = {"url": url}
                 return action, params
 
-            # 3) Direct URL tapeciarnia:https://...
+            # Direct URL
             if payload.lower().startswith("http"):
                 if not _is_allowed_domain(payload):
-                    logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+                    logger.warning("Blocked: URL not from allowed domain.")
                     return None, None
 
-                # Auto-classify mp4
-                if payload.lower().endswith((".mp4", ".webm", ".mov")):
-                    action = "mp4_url"
-                else:
-                    action = "set_url_default"
+                action = (
+                    "mp4_url"
+                    if payload.lower().endswith((".mp4", ".webm", ".mov"))
+                    else "set_url_default"
+                )
 
                 params = {"url": payload}
                 return action, params
 
         # --------------------------------------------------------------
-        # STANDARD tapeciarnia://action?url=...
+        # STANDARD tapeciarnia://action?params
         # --------------------------------------------------------------
-        action = parsed_uri.path.strip("/")
-        if not action and parsed_uri.netloc:
-            action = parsed_uri.netloc.split("@")[-1].split(":")[0]
+        action = path or netloc
 
         query_params = urllib.parse.parse_qs(parsed_uri.query)
         params = {k: v[0] for k, v in query_params.items()}
 
-        # If URL parameter exists — check domain
         if "url" in params and not _is_allowed_domain(params["url"]):
-            logger.warning("Blocked: URL not from tapeciarnia.pl domain.")
+            logger.warning("Blocked: URL not from allowed domain.")
             return None, None
 
         return action, params

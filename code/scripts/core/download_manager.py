@@ -23,6 +23,7 @@ class VideoDownloadThread(QThread):
         self.file_path = file_path
         self._cancelled = False
         self.traslator = get_language_controller()
+        self.file_name = None
     
     # prevent running more then one intance of this class 
 
@@ -106,6 +107,8 @@ class ImageDownloadThread(QThread):
         self.download_path = download_path
         self._cancelled = False
         self.traslator = get_language_controller()
+        self.file_name:str = None
+        self.image_id:int = None
 
     def run(self):
         try:
@@ -119,12 +122,14 @@ class ImageDownloadThread(QThread):
             if self.download_path:
                 download_path = Path(self.download_path)
             else:
-                # Get filename from URL
-                parsed_url = urlparse(self.url)
-                filename = os.path.basename(parsed_url.path)
-                if not filename or '.' not in filename:
-                    filename = f"image_{int(time.time())}.jpg"
-                
+                if not self.file_name:
+                    # Get filename from URL
+                    parsed_url = urlparse(self.url)
+                    filename = os.path.basename(parsed_url.path)
+                    if not filename or '.' not in filename:
+                        filename = f"image_{int(time.time())}.jpeg"
+                else:
+                    filename = self.file_name
                 # Sanitize filename
                 filename = self._get_safe_filename(filename)
                 download_path = SAVES_DIR / filename

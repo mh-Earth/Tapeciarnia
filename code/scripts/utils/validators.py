@@ -212,6 +212,49 @@ def get_media_type(s: str) -> str:
     elif is_video_url_or_path(s):
         return "video"
 
+
+
+def extract_file_id_from_url(url: str):
+    """
+    Identifies Tapeciarnia app_uri.php URLs.
+
+    Examples:
+    - id=5600        -> ("id", "5600")
+    - id=mp4-2500   -> ("mp4_id", "2500")
+    """
+
+    try:
+        parsed = urllib.parse.urlparse(url)
+
+        if parsed.netloc != "tapeciarnia.pl":
+            return None, None
+
+        if not parsed.path.endswith("/app_uri.php"):
+            return None, None
+
+        params = urllib.parse.parse_qs(parsed.query)
+        raw_id = params.get("id", [None])[0]
+
+        if not raw_id:
+            return None, None
+
+        # mp4 ID
+        mp4_match = re.fullmatch(r"mp4-(\d+)", raw_id)
+        if mp4_match:
+            return "mp4_id", mp4_match.group(1)
+
+        # numeric ID
+        if raw_id.isdigit():
+            return "id", raw_id
+
+        return None, None
+
+    except Exception:
+        return None, None
+
+
+
+
 if __name__ == "__main__":
 
     print(validate_tapeciarnia_url("https://www.youtube.com/watch?v=sr_qh33LsKQ&list=RDsr_qh33LsKQ&start_radio=1"))

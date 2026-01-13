@@ -4,6 +4,7 @@ import random
 import logging
 import logging
 from pathlib import Path
+import time
 import webbrowser
 
 from PySide6.QtWidgets import (
@@ -43,12 +44,12 @@ from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import SUPER_WALLPAPER_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
 from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url
-from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url
+from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url,extract_file_id_from_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
 from utils.singletons import get_config,get_language_controller
 # Import models
-from models.constants import RangeTypes,LoginPayload
+from models.constants import RangeTypes,LoginPayload,WallpaperType
 # Import UI components
 # from .dialogs import ShutdownProgressDialog
 
@@ -773,12 +774,26 @@ class TapeciarniaApp(QMainWindow):
         url = self.ui.urlInput.text().strip()
         if not url:
             logging.warning("No URL/path provided for apply")
-            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.empty_url_field_title"), self.language_controller.get("dialog.warning.empty_url_field_message")) #
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.empty_url_field_title",""), self.language_controller.get("dialog.warning.empty_url_field_message","")) #
             self.ui.loadUrlButton.setDisabled(False)
             return
         
         logging.info(f"Applying input string: {url}")
-        self._apply_input_string(url)
+        # validate if the url is from tapeciarnia.pl or not
+
+        if url.endswith(('.jpg', '.jpeg', '.png', '.mp4', '.webm', '.avi', '.mkv', '.mov')):
+            logging.info("Input detected as direct URL")
+            self._apply_wallpaper_from_input_area(text=url)
+        else:
+            logging.info("Input detected as indirect URL")
+            file_id,file_type = extract_file_id_from_url(url)
+            if file_id and file_type:
+                logging.info(f"Extracted file ID: {file_id}, type: {file_type} from URL")
+                self.apply_wallpaper_from_uris(file_id,file_type,{"id":file_id})
+            else:
+                logging.warning("Failed to extract file ID from URL")
+                self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.invalid_url_title",""), self.language_controller.get("dialog.warning.invalid_url_message","")) #
+
 
     def on_start_clicked(self):
 
@@ -1225,7 +1240,7 @@ class TapeciarniaApp(QMainWindow):
         self.ui.urlInput.clearFocus()
 
 
-    def _apply_input_string(self, text: str):
+    def _apply_wallpaper_from_input_area(self, text: str):
         """Main method to apply wallpaper from URL or file path."""
 
         # stopping scheduler
@@ -1307,9 +1322,34 @@ class TapeciarniaApp(QMainWindow):
             logging.warning(f"Unsupported local file type: {file_path.suffix}")
             self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_file_title"),
                     self.language_controller.get("dialog.warning.unsupported_file_message")) #
+    def _handle_remote_image(self, url: str,file_name:str=None):
+        """Handle remote image download and application"""
+        self._direct_image_downloader(url,file_name=file_name)
 
 
-    def _handle_remote_image(self, url: str):
+    def _direct_image_downloader(self, url: str,file_name:str = None):
+        """
+        Handle remote image download and application with progress window.
+        This method manages the download of images from remote URLs and displays
+        progress information to the user. It creates a separate thread to perform
+        the download operation asynchronously, preventing UI blocking.
+        Args:
+            url (str): The complete URL of the remote image to download.
+            file_name (str, optional): Custom file name for the downloaded image.
+                If not provided, the file name will be derived from the URL or
+                use a default naming scheme. Defaults to None.
+        Raises:
+            Exception: If the image download thread setup fails, the error is logged
+                and displayed to the user via a critical message box.
+        Signals Connected:
+            - progress: Emits download progress percentage and status messages
+            - error: Triggered if an error occurs during download
+            - done: Triggered when the download completes successfully
+        Note:
+            The actual download operation runs in a separate ImageDownloadThread
+            to maintain UI responsiveness. Status updates are displayed to the user
+            via the _set_status method.
+        """
         """Handle remote image download and application with progress window"""
         logging.info(f"Downloading remote image: {url}")
         
@@ -1318,6 +1358,8 @@ class TapeciarniaApp(QMainWindow):
             
             # Start download in a thread to show progress
             self.image_download_thread = ImageDownloadThread(url)
+            self.image_download_thread.file_name = file_name
+            
             self.image_download_thread.progress.connect(
                 lambda percent, status: (
                     self._set_status(status)
@@ -1333,28 +1375,56 @@ class TapeciarniaApp(QMainWindow):
             logging.error(f"Image download setup failed: {e}", exc_info=True)
             self.customMessageBox.critical(self, "Error", f"Image download setup failed: {e}") #
 
+
     def _on_image_download_done(self, file_path: str):
-        """Handle completion of image download"""
+        """Handle completion of image download (used in _handle_remote_image)"""
         logging.info(f"Image download completed: {file_path}")
         self._safe_process_file(Path(file_path))
 
-    def _handle_remote_video(self, url: str):
-        """Handle remote video download - for direct video links"""
+    def _handle_remote_video(self, url: str,file_name:str=None):
+        """Handle remote video downloads"""
         logging.info(f"Downloading remote video: {url}")
-        self._set_status(self.language_controller.get("status.genaral.downloading_video")) #
+        # self._set_status(self.language_controller.get("status.genaral.downloading_video")) #
         cleanup_temp_marker()
-        self._handle_direct_video_download(url)
+        self._direct_video_downloader(url,file_name=file_name)
 
 
-    def _handle_direct_video_download(self, url: str):
+    def _direct_video_downloader(self, url: str,file_name:str=None):
+        """
+        Handle direct video file downloads (not YouTube/streaming services).
+        This method sets up and initiates a download for video files from direct URLs.
+        It creates a separate thread to manage the download process without blocking the UI.
+        The download progress is tracked and displayed to the user via status messages.
+        Parameters:
+            url (str): The direct URL of the video file to download.
+            file_name (str, optional): The desired filename for the downloaded video.
+                If not provided, the filename is extracted from the URL.
+                Defaults to None.
+        Returns:
+            None
+        Raises:
+            Exception: If the download setup fails, an error message is displayed
+                to the user via a critical message box and logged.
+        Note:
+            - If no filename is provided, it is automatically sanitized and a .mp4
+              extension is added if the extracted filename lacks a valid video extension.
+            - The download runs asynchronously in a separate thread (VideoDownloadThread)
+              to prevent UI blocking.
+            - Download progress, errors, and completion are handled via signal connections.
+        """
         """Handle direct video file downloads (not YouTube/streaming)"""
         try:
             logging.info(f"Starting direct video download: {url}")
             
-            # Sanitize filename
-            filename = url.split("/")[-1]
-            filename = self._get_safe_filename(filename)
-            download_path = SAVES_DIR / filename
+            if not file_name:
+                # Sanitize filename for the first time
+                file_name = url.split("/")[-1]
+                file_name = self._get_safe_filename(file_name)
+                # check for extrantion of the filename at the end
+                if not any(file_name.lower().endswith(ext) for ext in self.config.get_valid_video_extensions()):
+                    file_name += ".mp4"  # default to .mp4 if no valid extension
+                
+            download_path = SAVES_DIR / file_name
             
             logging.info(f"Downloading to: {download_path}")
             
@@ -1382,16 +1452,16 @@ class TapeciarniaApp(QMainWindow):
 
 
 
-    def _get_safe_filename(self, filename):
+    def _get_safe_filename(self, raw_name):
         """Remove invalid characters for both Windows and Linux"""
-        logging.debug(f"Sanitizing filename: {filename}")
+        logging.debug(f"Sanitizing filename: {raw_name}")
         # Characters invalid on Windows: < > : " | ? *
         # Characters to avoid on Linux: / and null bytes
-        invalid_chars = '<>:"|?*/\0'
+        invalid_chars = '=<>:"|?*/\0'
         for char in invalid_chars:
-            filename = filename.replace(char, '_')
-        logging.debug(f"Sanitized filename: {filename}")
-        return filename
+            raw_name = raw_name.replace(char, '_')
+        logging.debug(f"Sanitized filename: {raw_name}")
+        return raw_name
 
 
     def _validate_downloaded_file(self, path: str) -> bool:
@@ -1557,7 +1627,7 @@ class TapeciarniaApp(QMainWindow):
         """Apply image wallpaper with fade effect - FIXED for null pixmap"""
         try:
             self.set_buttons(False)
-            logging.info(f"Applying image wallpaper with fade: {image_path}")
+            logging.info(f"Applying image wallpaper: {image_path}")
             
             # Check if image file exists and is valid
             if not os.path.exists(image_path):
@@ -1582,7 +1652,7 @@ class TapeciarniaApp(QMainWindow):
             self.set_buttons(True)
             
         except Exception as e:
-            logging.error(f"Fade apply failed: {e}", exc_info=True)
+            logging.error(f"Failed to apply image: {e}", exc_info=True)
             # Fallback to direct application without fade
             try:
                 self.set_buttons(True)
@@ -1887,7 +1957,7 @@ class TapeciarniaApp(QMainWindow):
 
 
     def _on_download_error(self, error_msg: str):
-        """Handle download errors"""
+        """Handle download errors (used in both image and video downloads)"""
         logging.error(f"Download error: {error_msg}")
         self.customMessageBox.critical(self, "Download Error", error_msg) #
         self._set_status(self.language_controller.get("status.genaral.download_failed")) #
@@ -2234,6 +2304,45 @@ class TapeciarniaApp(QMainWindow):
         else:
             logging.info("User cancelled exit from tray")
 
+
+    def apply_wallpaper_from_uris(self,url:str,file_type:WallpaperType,params:dict):
+        """Main method to apply wallpaper from URI."""
+
+        # stopping scheduler
+        if self.scheduler.is_active():
+            self._stop_scheduler()
+
+        if not is_connected_to_internet:
+            self._set_status(self.language_controller.get("status.genaral.unable_to_connect")) #
+            return
+        # Disable buttons during processing
+        self.set_buttons(False)
+
+        url = (url or "").strip()
+        logging.info(f"Applying command: {url}")
+
+        if not url:
+            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.invalid_path_title"), self.language_controller.get("dialog.warning.invalid_path_message")) #
+            self.set_buttons(True)
+            return
+        
+                # -------- Handle Remote URL --------
+        if not validate_tapeciarnia_url(url):
+            logging.info(f"Processing remote URL: {url}")
+            return
+            
+        
+        if file_type == WallpaperType.STATIC:
+
+            self._handle_remote_image(url,file_name=f"{params.get('id', time.time())}.jpg")
+
+
+        elif file_type == WallpaperType.ANIMATED:
+
+            self._handle_remote_video(url,file_name=f"{params.get('id', time.time())}.mp4")
+
+
+
     def handle_startup_uri(self, action, params):
             """
             Processes the URI command received upon application launch, handling both
@@ -2244,168 +2353,22 @@ class TapeciarniaApp(QMainWindow):
                 params (dict): Dictionary of query parameters (must contain 'url' for most actions).
             """
             
-            logging.info(f"Handling startup URI. Action: {action}, Params: {params}")
+            logging.info(f"Handling URI. Action: {action}, Params: {params}")
 
             # Check for the required 'url' parameter for most actions
             wallpaper_url = params.get('url')
-            
-            if action == "setwallpaper":
-            # Handles: tapeciarnia://setwallpaper?url=... (Standard action)
-                if wallpaper_url:
-                    logging.info(f"Executing standard setwallpaper command for URL: {wallpaper_url}")
-                    
-                    # Show a confirmation message to the user
-                    reply = self.customMessageBox.question(
-                        self,
-                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
-                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}",
-                    )
-                    
-                    # FIX: Add the missing execution logic (same as other actions)
-                    confirmed = reply 
-                    self.last_uri_command = {
-                        "action": action,
-                        "url": wallpaper_url,
-                        "confirmed": confirmed
-                    }
-                    logging.info(f"URI command confirmation stored: {self.last_uri_command}")
+        
 
-                    # FIX: Add the missing action logic
-                    if confirmed:
-                        try:
-                            self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
-                            self._apply_input_string(wallpaper_url)
-                        except Exception as e:
-                            logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            self.customMessageBox.critical(self, self.language_controller.get("dialog.critical.failed_uri_title"), self.language_controller.get("dialog.critical.failed_uri_message") ) #
-                    else:
-                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
-                else:
-                    logging.error("setwallpaper action received, but 'url' parameter is missing.")
-                    # self.customMessageBox.warning(self, "URI Error", "The 'setwallpaper' command is missing the required URL parameter.")
-
-
-            elif action == "mp4_url":
-                # Handles: tapeciarnia:mp4_url:https://video.mp4 (Custom action for video wallpaper)
-                if wallpaper_url:
-                    logging.info(f"Executing mp4_url command for URL: {wallpaper_url}")
-                    
-                    # --- CORE LOGIC DISPATCH: Video Wallpaper ---
-                    # This handles video URLs and triggers the video handler logic.
-                    # e.g., self.controller.start_video_wallpaper(wallpaper_url)
-                    
-                    self.ui.urlInput.setText(wallpaper_url)
-                    reply = self.customMessageBox.question(
-                        self,
-                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
-                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}"
-                        )
-
-                    # store the user's decision for later inspection or logging
-                    confirmed = reply
-                    self.last_uri_command = {
-                        "action": action,
-                        "url": wallpaper_url,
-                        "confirmed": confirmed
-                    }
-                    logging.info(f"URI command confirmation stored: {self.last_uri_command}")
-
-                    # act on the user's choice
-                    if confirmed:
-                        # proceed to apply the wallpaper (reuse existing input handling)
-                        try:
-                            self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
-                            self._apply_input_string(wallpaper_url)
-                        except Exception as e:
-                            logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            self.customMessageBox.critical(self, self.language_controller.get("diolog.warning.failed_uri_title"), self.language_controller.get("diolog.warning.failed_uri_message"))
-                        
-                    else:
-                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
-
-            elif action == "set_url_default":
-                # Handles: tapeciarnia:https://image.jpg (Custom default action for static image)
-                if wallpaper_url:
-                    logging.info(f"Executing default set_url_default command for URL: {wallpaper_url}")
-                    
-                    # --- CORE LOGIC DISPATCH: Default/Static Wallpaper ---
-                    # This handles the simple image URLs (e.g., .jpg, .png)
-                    # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
-                    
-                    reply = self.customMessageBox.question(
-                        self,
-                        self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
-                        f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\n\n {wallpaper_url}",
-                    )
-                    
-                    # Store the user's decision
-                    confirmed = reply 
-                    self.last_uri_command = {
-                        "action": action,
-                        "url": wallpaper_url,
-                        "confirmed": confirmed
-                    }
-                    logging.info(f"URI command confirmation stored: {self.last_uri_command}")
-                    
-                    # Act on user's choice
-                    if confirmed:
-                        try:
-                            self.ui.urlInput.setText(wallpaper_url)
-                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
-                            self._apply_input_string(wallpaper_url)
-                        except Exception as e:
-                            logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
-                            self.customMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}") #
-                    else:
-                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
-                        
-                else:
-                    logging.error("set_url_default action received, but 'url' parameter is missing.")
-                    # self.customMessageBox.warning(self, "URI Error", "The command is missing the required URL parameter.")
-
-            elif action == "openfavorites":
-                logging.info("Executing openfavorites command.")
-                try:
-                    folder = get_folder_for_source("favorites")
-                    if not folder.exists():
-                        logging.warning(f"Favorites folder does not exist: {folder}")
-                        self.customMessageBox.warning(self, "Folder Not Found", f"The favorites folder does not exist:\n{folder}") #
-                    else:
-                        success = open_folder_in_explorer(folder)
-                        if success:
-                            self._set_status("Opened Favorites folder")
-                            self.customMessageBox.information(self, "Opened Favorites", f"Opened favorites folder:\n{folder}") # no need
-                        else:
-                            logging.error(f"Failed to open favorites folder in explorer: {folder}")
-                            self.customMessageBox.warning(self, "Open Failed", f"Could not open folder in file explorer:\n{folder}") #
-                except Exception as e:
-                    logging.error(f"Failed to open favorites folder: {e}", exc_info=True)
-                    self.customMessageBox.critical(self, "Error", f"Failed to open favorites folder: {e}") #no need
-            
-            elif action == "id":
+            if action == "id":
                 
                 image_id = params.get('id')
                 if image_id: 
 
-                    wallpaper_url = f"https://tapeciarnia.pl/program/pobierz_jpeg_v2.php?id={image_id}"
+                    wallpaper_url = self.config.get_uri_image_url().format(wallpaper_id=image_id)
 
 
                     logging.info(f"Executing default set_url_default command for URL: {wallpaper_url}")
                     
-                    # --- CORE LOGIC DISPATCH: Default/Static Wallpaper ---
-                    # This handles the simple image URLs (e.g., .jpg, .png)
-                    # e.g., self.controller.download_and_set_static_wallpaper(wallpaper_url)
-                    
-                    # reply = self.customMessageBox.question(
-                    #     self,
-                    #     self.language_controller.get("dialog.qustions.confirm_wallpaper_change_title"),
-                    #     f"{self.language_controller.get("dialog.qustions.confirm_wallpaper_change_message")}\ntapeciarnia:{image_id}",
-                    # )
-                    
-                    # Store the user's decision
-                    # confirmed = reply 
                     confirmed = True 
                     self.last_uri_command = {
                         "action": action,
@@ -2419,7 +2382,7 @@ class TapeciarniaApp(QMainWindow):
                         try:
                             self.ui.urlInput.setText(f"tapeciarnia:{image_id}")
                             self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
-                            self._apply_input_string(wallpaper_url)
+                            self.apply_wallpaper_from_uris(wallpaper_url,file_type=WallpaperType.STATIC,params=params)
                         except Exception as e:
                             logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
                             # self.customMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
@@ -2429,8 +2392,39 @@ class TapeciarniaApp(QMainWindow):
                 else:
                     logging.error("id action received, but 'id' parameter is missing.")
                     # self.customMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
+            
+            elif action == "mp4_id":
+                image_id = params.get('id')
+                if image_id: 
+
+                    wallpaper_url = self.config.get_uri_video_url().format(wallpaper_id=image_id)
 
 
+                    logging.info(f"Executing default set_url_default command for URL: {wallpaper_url}")
+                    
+                    confirmed = True 
+                    self.last_uri_command = {
+                        "action": action,
+                        "url": wallpaper_url,
+                        "confirmed": confirmed
+                    }
+                    logging.info(f"URI command confirmation stored: {self.last_uri_command}")
+                    
+                    # Act on user's choice
+                    if confirmed:
+                        try:
+                            self.ui.urlInput.setText(f"tapeciarnia:id-mp4/{image_id}")
+                            self._set_status(self.language_controller.get("status.genaral.applying_wallpaper_from_URI")) #
+                            self.apply_wallpaper_from_uris(wallpaper_url,file_type=WallpaperType.ANIMATED,params=params)
+                        except Exception as e:
+                            logging.error(f"Failed to apply wallpaper from URI: {e}", exc_info=True)
+                            # self.customMessageBox.critical(self, "Error", f"Failed to apply wallpaper: {e}")
+                    else:
+                        self._set_status(self.language_controller.get("status.genaral.wallpaper_cancelled_by_user")) #
+                        
+                else:
+                    logging.error("mp4_id action received, but 'id' parameter is missing.")
+                    # self.customMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
 
             else:
                 logging.warning(f"Unknown URI action received: {action}")

@@ -18,7 +18,7 @@ try:
     from code.scripts.utils.path_utils import get_style_path
     from code.scripts.setLogging import InitLogging
     from code.scripts.ui.main_window import TapeciarniaApp
-    from code.scripts.utils.uri_handler import parse_uri_command
+    from code.scripts.utils.uri_parser import parse_uri_command
     from code.scripts.ui import icons_resource_rc # do not remove this
     from code.scripts.utils.singletons import SingleApplication
     logging.debug("Loaded modules using absolute imports (code.*)")
@@ -28,7 +28,7 @@ except ImportError:
     from utils.path_utils import get_style_path
     from setLogging import InitLogging
     from ui.main_window import TapeciarniaApp
-    from utils.uri_handler import parse_uri_command
+    from utils.uri_parser import parse_uri_command
     from utils.singletons import SingleApplication
     from ui import icons_resource_rc # do not remove this
     logging.debug("Loaded modules using relative imports")
@@ -83,8 +83,8 @@ def main():
         # translator = GlobalButtonTranslator.instance()
 
  
-        # if not auth_of_devloper():
-        #     raise ZeroDivisionError("The app has faced some critical error. Please contact the developer.")
+        if not auth_of_devloper():
+            raise ZeroDivisionError("Failed authentication check.")
         # Single instance wrapper
 
         # If this is a secondary instance → exit now
@@ -150,8 +150,3 @@ if __name__ == "__main__":
     
     main()
         
-
-# TODO
-    # change dilog button text on translations change (done)
-    # change status ber text on translations change (done)
-    

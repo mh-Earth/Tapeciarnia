@@ -15,6 +15,7 @@ class Config:
         self.ensure_valid_video_extensions()
         self.set_default_super_wallpaper_urls()
         self.set_login_url("https://tapeciarnia.pl/program/login_2025.php")
+        self.set_uri_urls("https://tapeciarnia.pl/app_uri.php?id={wallpaper_id}&typ=windows","https://tapeciarnia.pl/app_uri.php?id=mp4-{wallpaper_id}&typ=windows")
         logging.info("QSettings backend initialized")
 
     @staticmethod
@@ -358,3 +359,19 @@ class Config:
     #     self.set("fvrt_wallpaper_url",url)
 
     #     logging.debug(f"Set default frvt wallpaper URL: {url}")
+
+    def set_uri_image_url(self,url:str):
+        self.set("url_image_url",url)
+
+    def get_uri_image_url(self) -> str:
+        return self.get("url_image_url","")
+
+    def set_uri_video_url(self,url:str):
+        self.set("url_video_url",url)
+
+    def get_uri_video_url(self) -> str:
+        return self.get("url_video_url","")
+        
+    def set_uri_urls(self,image_url:str,video_url:str):
+        self.set_uri_image_url(image_url)
+        self.set_uri_video_url(video_url)
