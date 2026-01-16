@@ -49,7 +49,7 @@ from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
 from utils.singletons import get_config,get_language_controller
 # Import models
-from models.constants import RangeTypes,LoginPayload,WallpaperType
+from models.constants import RangeTypes,LoginPayload,WallpaperType,URIActions
 # Import UI components
 # from .dialogs import ShutdownProgressDialog
 
@@ -321,45 +321,25 @@ class TapeciarniaApp(QMainWindow):
         self.stop_auto_pause_process()
         logging.info("Application cleanup completed")
 
-    # Rest of your existing methods remain the same...
-    def changeEvent(self, event):
-        if event.type() == QEvent.WindowStateChange:
-            if self.isMinimized() and not self.is_minimized_to_tray:
-                logging.debug("Window minimize event detected, hiding to tray")
-                event.ignore()
-                self.hide_to_tray()
-        super().changeEvent(event)
+    # # Rest of your existing methods remain the same...
+    # def changeEvent(self, event):
+    #     if event.type() == QEvent.WindowStateChange:
+    #         if self.isMinimized() and not self.is_minimized_to_tray:
+    #             logging.debug("Window minimize event detected, hiding to tray")
+    #             event.ignore()
+    #             self.hide_to_tray()
+    #     super().changeEvent(event)
 
     def closeEvent(self, event):
         """
-        Handle window close event - Show confirmation dialog before closing
+        Handle window close event - hide the window to tray instead of exiting
         """
-        logging.info("Close event triggered")
 
-        reply = self.customMessageBox.question(
-            self,
-            self.language_controller.get("dialog.qustions.confirm_exit_title"),
-            self.language_controller.get("dialog.qustions.confirm_exit_dialog"),
-        )
-
-        # self.customMessageBox.YesRole = 0
-        if reply == 2:
-            logging.info("User confirmed exit")
-            self._show_shutdown_progress(event)
-        else:
-            logging.info("User cancelled exit")
-            event.ignore()
-
-    def _show_shutdown_progress(self, event):
-        """Show shutdown progress and perform cleanup"""
-        logging.info("Starting shutdown process with enhanced progress dialog")
-        
-        # Create and show shutdown progress dialog
-        # self.shutdown_dialog = ShutdownProgressDialog(self)
-        # self.shutdown_dialog.show()
-        
-        # Start the actual shutdown process after dialog is shown
-        QTimer.singleShot(200, lambda: self._perform_shutdown(event))
+        logging.info("Close event triggered, hiding to tray instead of exiting")
+        self.hide()
+        self.is_minimized_to_tray = True
+        logging.debug("Window hidden to tray")
+        event.ignore()
 
     def _perform_shutdown(self, event):
         """Perform shutdown with coordinated progress updates"""
@@ -428,75 +408,6 @@ class TapeciarniaApp(QMainWindow):
         except Exception as e:
             logging.error(f"Error finalizing shutdown: {e}", exc_info=True)
             # Force quit if graceful shutdown fails
-            QApplication.quit()
-
-    def _show_shutdown_progress_from_tray(self):
-        """Show shutdown progress when exiting from tray"""
-        logging.info("Starting shutdown process from tray with progress dialog")
-        
-        # Create and show shutdown progress dialog
-        # self.shutdown_dialog = ShutdownProgressDialog(self)
-        # self.shutdown_dialog.show()
-        
-        # Start shutdown process
-        QTimer.singleShot(200, self._perform_shutdown_from_tray)
-
-    def _perform_shutdown_from_tray(self):
-        """Perform shutdown from tray with progress updates"""
-        try:
-            logging.info("Performing shutdown sequence from tray")
-            
-            # Step 1: Stop wallpaper processes (25%)
-            # self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
-            self.controller.stop()
-            QApplication.processEvents()
-            
-            # Step 2: Stop scheduler (50%)
-            # self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
-            self._stop_scheduler()
-            QApplication.processEvents()
-            
-            # Step 3: Cleanup (75%)
-            # self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
-            try:
-                if hasattr(self, 'stop_auto_pause_process'):
-                    self.stop_auto_pause_process()
-            except Exception as e:
-                logging.warning(f"Error stopping auto-pause process: {e}")
-            QApplication.processEvents()
-            
-            # Step 4: Save settings (90%)
-            # self.shutdown_dialog.update_progress(90, "Saving settings...")
-            QApplication.processEvents()
-            
-            # Step 5: Complete (100%)
-            # self.shutdown_dialog.update_progress(100, "Shutdown complete!")
-            QApplication.processEvents()
-            
-            # Wait a moment to show completion
-            QTimer.singleShot(800, self._finalize_shutdown_from_tray)
-            
-        except Exception as e:
-            logging.error(f"Error during tray shutdown: {e}", exc_info=True)
-            self._finalize_shutdown_from_tray()
-
-    def _finalize_shutdown_from_tray(self):
-        """Finalize shutdown from tray"""
-        try:
-            # Hide tray icon
-            if hasattr(self, 'tray'):
-                self.tray.hide()
-            
-            # Close shutdown dialog
-            if hasattr(self, 'shutdown_dialog'):
-                self.shutdown_dialog.close()
-            
-            # Quit application
-            QApplication.quit()
-            logging.info("Application quit from tray completed successfully")
-            
-        except Exception as e:
-            logging.error(f"Error finalizing tray shutdown: {e}", exc_info=True)
             QApplication.quit()
 
     def stop_auto_pause_process(self):
@@ -858,18 +769,6 @@ class TapeciarniaApp(QMainWindow):
                     # self._set_status(f"Scheduler started - {len(available_files)} wallpapers, changing every {interval} minutes") #
                     #  upadate start button
                     self._update_start_btn()
-                    # Show success message
-                    # self.customMessageBox.information(
-                    #     self,
-                    #     "Scheduler Started",
-                    #     f"Scheduler started successfully!\n\n"
-                    #     f"• Source: {self._get_source_display_name(source)}\n"
-                    #     f"• Range: {self._get_range_display_name()}\n"
-                    #     f"• Interval: {interval} minutes\n"
-                    #     f"• Available wallpapers: {len(available_files)}\n\n"
-                    #     f"First wallpaper: {random_wallpaper.name}",
-                        
-                    # ) #
                     
                 except Exception as e:
                     logging.error(f"Failed to apply random wallpaper: {e}")
@@ -1179,10 +1078,6 @@ class TapeciarniaApp(QMainWindow):
         """Handle interval change"""
         logging.info(f"Interval changed to: {val} minutes")
         self.scheduler.interval_minutes = val
-        # if self.scheduler.is_active():
-        #     self.scheduler.stop()
-            # self.scheduler.start(self.scheduler.source, val)
-        # self._set_status(f"Scheduler interval: {val} min")
     
     def set_interval(self,interval:int):
         self.ui.interval_spinBox.setValue(interval)
@@ -1362,7 +1257,7 @@ class TapeciarniaApp(QMainWindow):
             
             self.image_download_thread.progress.connect(
                 lambda percent, status: (
-                    self._set_status(status)
+                    self._set_status(f"Downloading...{status}")
                 )
             )
             self.image_download_thread.error.connect(self._on_download_error)
@@ -1432,7 +1327,7 @@ class TapeciarniaApp(QMainWindow):
             self.direct_download_thread = VideoDownloadThread(url, str(download_path))
             self.direct_download_thread.progress.connect(
                 lambda percent, status: (
-                    self._set_status(f"Downloading {status}")
+                    self._set_status(f"Downloading...{status}")
                 )
             )
             self.direct_download_thread.error.connect(self._on_download_error)
@@ -2125,7 +2020,7 @@ class TapeciarniaApp(QMainWindow):
         exit_action.triggered.connect(self._exit_app)
         
         tray_menu.addAction(show_action)
-        tray_menu.addAction(hide_action)
+        # tray_menu.addAction(hide_action)
         tray_menu.addSeparator()
         tray_menu.addAction(exit_action)
         
@@ -2287,7 +2182,7 @@ class TapeciarniaApp(QMainWindow):
             self.ui.user_name_label.setVisible(False)
 
 
-    def _exit_app(self):
+    def _exit_app(self,event):
         """Properly quit the application from tray menu with confirmation and progress"""
         logging.info("Exit from tray menu triggered")
         reply = self.customMessageBox.question(
@@ -2300,7 +2195,7 @@ class TapeciarniaApp(QMainWindow):
         if reply == 2:
             logging.info("User confirmed exit from tray")
             # Show shutdown progress for tray exit too
-            self._show_shutdown_progress_from_tray()
+            self._perform_shutdown(event)
         else:
             logging.info("User cancelled exit from tray")
 
@@ -2326,9 +2221,9 @@ class TapeciarniaApp(QMainWindow):
             self.set_buttons(True)
             return
         
-                # -------- Handle Remote URL --------
+        # -------- Handle Remote URL --------
         if not validate_tapeciarnia_url(url):
-            logging.info(f"Processing remote URL: {url}")
+            logging.error(f"Invalid Tapeciarnia URL: {url}")
             return
             
         
@@ -2355,11 +2250,24 @@ class TapeciarniaApp(QMainWindow):
             
             logging.info(f"Handling URI. Action: {action}, Params: {params}")
 
+            if action not in URIActions.allowed():
+                logging.warning(f"Unsupported URI action received: {action}")
+                return # Ignore unsupported actions
+
+            # pop up a notification to inform user about the received command if the app is already hidden in icon tray
+            if not self.isVisible() and hasattr(self, 'tray'):
+                self.tray.showMessage(
+                    self.language_controller.get("appName"),
+                    self.language_controller.get("status.genaral.downloading_wallpaper"),
+                    QSystemTrayIcon.Information,
+                    1500
+                )
+
             # Check for the required 'url' parameter for most actions
             wallpaper_url = params.get('url')
         
 
-            if action == "id":
+            if action == URIActions.ID.value:
                 
                 image_id = params.get('id')
                 if image_id: 
@@ -2393,7 +2301,7 @@ class TapeciarniaApp(QMainWindow):
                     logging.error("id action received, but 'id' parameter is missing.")
                     # self.customMessageBox.warning(self, "URI Error", "The 'set_url_default' command is missing the required URL parameter.")
             
-            elif action == "mp4_id":
+            elif action == URIActions.MP4_ID.value:
                 image_id = params.get('id')
                 if image_id: 
 

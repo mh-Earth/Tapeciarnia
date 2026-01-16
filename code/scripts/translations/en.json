@@ -159,9 +159,6 @@
                 "original_wallpaper_restored":"Original wallpaper restored",
                 "Original_wallpaper_file_not_found": "Original wallpaper file not found",
                 "Failed_to_restore_original_wallpaper":"Failed to restore original wallpaper",
-                
-                
-                
                 "downloading_wallpaper":"Downloading wallpaper...",
                 "source_selected": "{} source selected",
                 "applied_wallpaper": "Applied wallpaper: {}",
@@ -172,7 +169,10 @@
                 "connecting_to_server":"Connecting to server...",
                 "scheduler_disabled": "Scheduler disabled",
                 "scheduler_enabled": "Scheduler enabled",
-                "empty_frvt_collection":"Can't find any favorite wallpapers. Please add some to favorites first."
+                "empty_frvt_collection":"Can't find any favorite wallpapers. Please add some to favorites first.",
+                
+                "app_title":"Tapeciarnia - Live Wallpaper Manager",
+                "changing_wallpaper":"Changing wallpaper..."
                 
 
 

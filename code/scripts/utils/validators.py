@@ -10,10 +10,6 @@ import requests
 from utils.singletons import get_config
 
 
-# scheduler modes
-MY_COLLECTION_MODE = "save"
-FAVOURITE_MODE = 'frvt'
-SUPER_MODE = 'super'
 
 def is_image_url_or_path(s: str) -> bool:
     """Check if string is an image URL or path - IMPROVED"""

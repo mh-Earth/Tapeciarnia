@@ -2,6 +2,7 @@ import urllib.parse
 import logging
 import re
 from utils.singletons import get_config
+from models.constants import URIActions
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +63,7 @@ def parse_uri_command(uri_string):
         # 1) tapeciarnia://<ID>
         # --------------------------------------------------------------
         if netloc.isdigit():
-            action = "id"
+            action = URIActions.ID.value
             params = {"id": netloc}
             return action, params
 
@@ -70,7 +71,7 @@ def parse_uri_command(uri_string):
         # 2) tapeciarnia://id-mp4/<ID>
         # --------------------------------------------------------------
         if netloc == "id-mp4" and path.isdigit():
-            action = "mp4_id"
+            action = URIActions.MP4_ID.value
             params = {"id": path}
             return action, params
 
@@ -82,7 +83,7 @@ def parse_uri_command(uri_string):
 
             # Pure numeric ID
             if payload.isdigit():
-                action = "id"
+                action = URIActions.ID.value
                 params = {"id": payload}
                 return action, params
 

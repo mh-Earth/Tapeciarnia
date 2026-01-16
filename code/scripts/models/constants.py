@@ -15,6 +15,16 @@ class Souces(Enum):
     FAVOURITE = "favourite"
     COLLECTION = "collection"
 
+class URIActions(Enum):
+    ID = "id"
+    MP4_ID = "mp4_id"
+
+
+    @classmethod
+    def allowed(cls):
+        return {cls.ID.value, cls.MP4_ID.value}
+
+
 @dataclass
 class LoginPayload:
     username:str

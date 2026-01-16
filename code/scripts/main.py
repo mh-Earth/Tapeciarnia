@@ -108,10 +108,13 @@ def main():
                 None
             )
 
+            ###############################
+            # if the window is minimized to tray, dont open it.
             # Bring win  to foreground
-            window.showNormal()
-            window.raise_()
-            window.activateWindow()
+            # window.showNormal()
+            # window.raise_()
+            # window.activateWindow()
+            ###############################
 
             if uri:
                 logging.info(f"Handling URI: {uri}")

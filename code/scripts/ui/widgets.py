@@ -405,7 +405,7 @@ class ButtonCollection:
     def create(self, text="", icon_path=None, style=None):
         match text:
             case "OK":
-                text = self.lang["navigation"]["ok"] if self.lang else "Okkk"
+                text = self.lang["navigation"]["ok"] if self.lang else "Ok"
             case "Cancel":
                 text = self.lang["navigation"]["cancel"] if self.lang else "Cancel"
             case "Yes":

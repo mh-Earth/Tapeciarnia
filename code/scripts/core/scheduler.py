@@ -203,11 +203,11 @@ class UnifiedWallpaperScheduler:
             folders = [Path(source)]
 
         if self.range_type != None:
-            if self.range_type.lower() == RangeTypes.ANIMATED:
+            if self.range_type == RangeTypes.ANIMATED:
                 exts = self.config.get_valid_video_extensions()
-            elif self.range_type.lower() == RangeTypes.STATIC:
+            elif self.range_type == RangeTypes.STATIC:
                 exts = self.config.get_valid_image_extensions()
-            elif self.range_type.lower() == RangeTypes.ALL:
+            elif self.range_type == RangeTypes.ALL:
                 exts = self.config.get_all_valid_extensions()
             else:
                 logging.warning(f"Invalid range type found: {self.range_type}. Switching to all range")
@@ -263,14 +263,14 @@ class OnlineWallpaperScheduler(QThread):
     #               HELPER METHODS
     # ---------------------------------------------------------
     def filter_urls_by_range_type(self,range_type:str):
-        if range_type.lower() == RangeTypes.ANIMATED:
+        if range_type == RangeTypes.ANIMATED:
             self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_video_extensions()))]
-        elif range_type.lower() == RangeTypes.STATIC:
+        elif range_type == RangeTypes.STATIC:
             self.url_list = [url for url in self.url_list if url.lower().endswith(tuple(self.config.get_valid_image_extensions()))]
-        elif range_type.lower() == RangeTypes.ALL:
+        elif range_type == RangeTypes.ALL:
             pass
         else:
-            logging.warning(f"Invali type found: {range_type}. No filtering applied")
+            logging.warning(f"Invalid range type found: {range_type}. No filtering applied")
 
 
     # ---------------------------------------------------------
