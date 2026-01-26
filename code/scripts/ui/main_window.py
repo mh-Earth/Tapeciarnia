@@ -43,7 +43,7 @@ from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import SUPER_WALLPAPER_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url
+from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url,isBundle
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url,extract_file_id_from_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
@@ -296,7 +296,7 @@ class TapeciarniaApp(QMainWindow):
         logging.info("Reset completed successfully")
         
         # Show success confirmation
-        QTimer.singleShot(500, self._show_reset_success_message)
+        # QTimer.singleShot(0, self._show_reset_success_message)
 
     def _show_reset_success_message(self):
         """Show success confirmation dialog after reset"""
@@ -334,12 +334,14 @@ class TapeciarniaApp(QMainWindow):
         """
         Handle window close event - hide the window to tray instead of exiting
         """
-
-        logging.info("Close event triggered, hiding to tray instead of exiting")
-        self.hide()
-        self.is_minimized_to_tray = True
-        logging.debug("Window hidden to tray")
-        event.ignore()
+        if isBundle():
+            logging.info("Close event triggered, hiding to tray instead of exiting")
+            self.hide()
+            self.is_minimized_to_tray = True
+            logging.debug("Window hidden to tray")
+            event.ignore()
+        else:
+            self._perform_shutdown(event)
 
     def _perform_shutdown(self, event):
         """Perform shutdown with coordinated progress updates"""
@@ -375,7 +377,7 @@ class TapeciarniaApp(QMainWindow):
             QApplication.processEvents()
             
             # Wait a moment to show completion, then finalize
-            QTimer.singleShot(800, lambda: self._finalize_shutdown(event))
+            QTimer.singleShot(100, lambda: self._finalize_shutdown(event))
             
         except Exception as e:
             logging.error(f"Error during shutdown: {e}", exc_info=True)
@@ -1575,8 +1577,9 @@ class TapeciarniaApp(QMainWindow):
                 search_folders = [SAVES_DIR]
                 source_type = "save"
             else:
-                search_folders = [Path(self.scheduler.source)]
-                source_type = "custom"
+                search_folders = [SAVES_DIR]
+                source_type = "save"
+
         else:
             # Fallback to range-based selection
             search_folders = [SAVES_DIR]
@@ -2018,10 +2021,23 @@ class TapeciarniaApp(QMainWindow):
         
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self._exit_app)
+
+        shuffle_static_action = QAction("Shuffle Static Wallpaper", self)
+        shuffle_static_action.triggered.connect(self._perform_local_static_shuffle)
+
+        shuffle_animated_action = QAction("Shuffle Animated Wallpaper", self)
+        shuffle_animated_action.triggered.connect(self._perform_local_animated_shuffle)
+
+        reset_action = QAction("Reset to Default Wallpaper", self)
+        reset_action.triggered.connect(self._perform_reset_with_confirmation)
         
         tray_menu.addAction(show_action)
         # tray_menu.addAction(hide_action)
         tray_menu.addSeparator()
+        tray_menu.addAction(shuffle_static_action)
+        tray_menu.addAction(shuffle_animated_action)
+        tray_menu.addSeparator()
+        tray_menu.addAction(reset_action)
         tray_menu.addAction(exit_action)
         
         self.tray.setContextMenu(tray_menu)
@@ -2199,7 +2215,6 @@ class TapeciarniaApp(QMainWindow):
         else:
             logging.info("User cancelled exit from tray")
 
-
     def apply_wallpaper_from_uris(self,url:str,file_type:WallpaperType,params:dict):
         """Main method to apply wallpaper from URI."""
 
@@ -2337,4 +2352,3 @@ class TapeciarniaApp(QMainWindow):
             else:
                 logging.warning(f"Unknown URI action received: {action}")
                 # self.customMessageBox.warning(self, "URI Error", f"Unknown command: '{action}'.")
-

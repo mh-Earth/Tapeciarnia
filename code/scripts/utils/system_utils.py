@@ -141,117 +141,151 @@ def get_current_desktop_wallpaper() -> Optional[str]:
         logging.warning(f"Unsupported platform for wallpaper retrieval: {sys.platform}")
         return None
     
-    
+
+
 def set_static_desktop_wallpaper(path: str) -> bool:
     """
-    Set wallpaper on Windows (multi-monitor supported via stitching)
-    and on Linux GNOME. The wallpaper is resized to completely fill
-    each monitor (no empty space). This function is self-contained.
+    Set wallpaper on:
+    - Windows (multi-monitor, correct positioning, span mode, DPI-safe)
+    - Windows 11 per-monitor (optional fallback)
+    - Linux GNOME (light + dark)
+
+    Image is resized using CSS-like "cover" behavior per monitor.
     """
     wallpaper_path = Path(path)
 
-    # Validate the path
     if not wallpaper_path.exists():
         logging.error("Wallpaper file not found: %s", wallpaper_path)
         return False
 
     try:
-        # === WINDOWS ===
+        # =========================
+        # WINDOWS
+        # =========================
         if sys.platform.startswith("win"):
-            try:
-                import ctypes
-                from PIL import Image
-                from screeninfo import get_monitors
+            import ctypes
+            from PIL import Image
+            from screeninfo import get_monitors
+            import winreg
 
-                logging.info("Applying Windows multi-monitor wallpaper")
+            logging.info("Applying Windows multi-monitor wallpaper")
 
-                # Get monitor information
-                monitors = get_monitors()
-                if not monitors:
-                    logging.error("No monitors detected")
-                    return False
-
-                # Calculate full stitched wallpaper size
-                total_width = sum(m.width for m in monitors)
-                max_height = max(m.height for m in monitors)
-
-                stitched_wallpaper = Image.new("RGB", (total_width, max_height))
-                source_img = Image.open(wallpaper_path)
-
-                # Helper: Resize image to cover target area like CSS "background-size: cover"
-                def resize_cover(img, target_w, target_h):
-                    src_w, src_h = img.size
-                    scale = max(target_w / src_w, target_h / src_h)
-                    new_size = (int(src_w * scale), int(src_h * scale))
-                    resized = img.resize(new_size, Image.LANCZOS)
-                    # Center crop
-                    x1 = (resized.width - target_w) // 2
-                    y1 = (resized.height - target_h) // 2
-                    return resized.crop((x1, y1, x1 + target_w, y1 + target_h))
-
-                # Build stitched wallpaper
-                offset_x = 0
-                for m in monitors:
-                    img_resized = resize_cover(source_img, m.width, m.height)
-                    stitched_wallpaper.paste(img_resized, (offset_x, 0))
-                    offset_x += m.width
-
-                # Save stitched wallpaper as BMP (required by Windows API)
-                final_path = wallpaper_path.parent / "wallpaper_stitched.bmp"
-                stitched_wallpaper.save(final_path, format="BMP")
-
-                SPI_SETDESKWALLPAPER = 20
-                result = ctypes.windll.user32.SystemParametersInfoW(
-                    SPI_SETDESKWALLPAPER, 0, str(final_path), 3
-                )
-
-                if result:
-                    logging.info("Wallpaper successfully applied (Windows)")
-                    return True
-                else:
-                    logging.error("SystemParametersInfoW failed")
-                    return False
-
-            except Exception as e:
-                logging.error("Windows wallpaper error: %s", e, exc_info=True)
+            # -------------------------
+            # Get monitors (with x/y)
+            # -------------------------
+            monitors = get_monitors()
+            if not monitors:
+                logging.error("No monitors detected")
                 return False
 
-        # === LINUX (GNOME) ===
-        elif sys.platform.startswith("linux"):
-            import subprocess
+            # -------------------------
+            # Virtual desktop bounds
+            # -------------------------
+            min_x = min(m.x for m in monitors)
+            min_y = min(m.y for m in monitors)
+            max_x = max(m.x + m.width for m in monitors)
+            max_y = max(m.y + m.height for m in monitors)
 
-            logging.info("Applying Linux GNOME wallpaper")
+            virtual_width = max_x - min_x
+            virtual_height = max_y - min_y
+
+            stitched = Image.new("RGB", (virtual_width, virtual_height))
+            source_img = Image.open(wallpaper_path).convert("RGB")
+
+            # -------------------------
+            # Resize helper (cover)
+            # -------------------------
+            def resize_cover(img, target_w, target_h):
+                src_w, src_h = img.size
+                scale = max(target_w / src_w, target_h / src_h)
+                new_size = (int(src_w * scale), int(src_h * scale))
+                resized = img.resize(new_size, Image.LANCZOS)
+                x1 = (resized.width - target_w) // 2
+                y1 = (resized.height - target_h) // 2
+                return resized.crop((x1, y1, x1 + target_w, y1 + target_h))
+
+            # -------------------------
+            # Paste using real coords
+            # -------------------------
+            for m in monitors:
+                img_resized = resize_cover(source_img, m.width, m.height)
+                paste_x = m.x - min_x
+                paste_y = m.y - min_y
+                stitched.paste(img_resized, (paste_x, paste_y))
+
+            # -------------------------
+            # Save BMP (Windows API)
+            # -------------------------
+            final_path = wallpaper_path.parent / "wallpaper_stitched.bmp"
+            stitched.save(final_path, "BMP")
+
+            # -------------------------
+            # Force SPAN mode
+            # -------------------------
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Control Panel\Desktop",
+                    0,
+                    winreg.KEY_SET_VALUE
+                ) as key:
+                    winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "22")  # Span
+                    winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+            except Exception:
+                logging.warning("Failed to enforce span mode")
+
+            # -------------------------
+            # Apply wallpaper
+            # -------------------------
+            SPI_SETDESKWALLPAPER = 20
+            SPIF_UPDATEINIFILE = 1
+            SPIF_SENDCHANGE = 2
+
+            result = ctypes.windll.user32.SystemParametersInfoW(
+                SPI_SETDESKWALLPAPER,
+                0,
+                str(final_path),
+                SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+            )
+
+            if not result:
+                logging.error("SystemParametersInfoW failed")
+                return False
+
+            logging.info("Wallpaper successfully applied (Windows)")
+            return True
+
+        # =========================
+        # LINUX (GNOME)
+        # =========================
+        elif sys.platform.startswith("linux"):
+            logging.info("Applying GNOME wallpaper")
 
             uri = f"file://{wallpaper_path.resolve()}"
 
-            try:
-                result = subprocess.run(
-                    ["gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
-                    capture_output=True, text=True
-                )
+            commands = [
+                ["gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
+                ["gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
+                ["gsettings", "set", "org.gnome.desktop.background", "picture-options", "zoom"],
+            ]
 
+            for cmd in commands:
+                result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     logging.error("gsettings error: %s", result.stderr.strip())
                     return False
 
-                logging.info("Linux wallpaper applied successfully")
-                return True
-
-            except FileNotFoundError:
-                logging.error("gsettings not found - unsupported desktop environment")
-                return False
-            except Exception as e:
-                logging.error("Linux wallpaper error: %s", e, exc_info=True)
-                return False
+            logging.info("Wallpaper successfully applied (Linux GNOME)")
+            return True
 
         else:
-            logging.warning("Unsupported OS for wallpaper: %s", sys.platform)
+            logging.warning("Unsupported OS: %s", sys.platform)
             return False
 
     except Exception as e:
-        logging.error("Unexpected wallpaper error: %s", e, exc_info=True)
+        logging.exception("Unexpected wallpaper error")
         return False
-    
+
 def conver_bytes_to_tmp_path(img_bytes: bytes, filename: str = "current_wallpaper.jpg",ext:str="jpg") -> str:
     """
     Save image/video bytes to a temporary file and return it's path.

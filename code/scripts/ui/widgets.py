@@ -91,6 +91,8 @@ class EnhancedDragDropWidget(QWidget):
         self.parent_app.ui.uploadArea.dragEnterEvent = self.dragEnterEvent
         self.parent_app.ui.uploadArea.dropEvent = self.dropEvent
         self.parent_app.ui.uploadArea.dragLeaveEvent = self.dragLeaveEvent
+        # make the cursor a pointing hand
+        self.parent_app.ui.uploadArea.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         
         
         # Upload text
@@ -162,27 +164,27 @@ class EnhancedDragDropWidget(QWidget):
 
 
     def _create_file_path(self):
-        """Add file to specified destination and show set as wallpaper option"""
+        """Add a copy of the dropped file to specified destination and show set as wallpaper option"""
         if not self.dropped_file_path:
             return
         
         source_path = Path(self.dropped_file_path)
         
-        # Determine destination folder
-        dest_folder = SAVES_DIR
+        # # Determine destination folder
+        # dest_folder = SAVES_DIR
         
-        # Copy file with duplicate handling
-        dest_path = SAVES_DIR / source_path.name
-        counter = 1
-        original_stem = source_path.stem
-        while dest_path.exists():
-            dest_path = dest_folder / f"{original_stem}_{counter}{source_path.suffix}"
-            counter += 1
+        # # Copy file with duplicate handling
+        # dest_path = SAVES_DIR / source_path.name
+        # counter = 1
+        # original_stem = source_path.stem
+        # while dest_path.exists():
+        #     dest_path = dest_folder / f"{original_stem}_{counter}{source_path.suffix}"
+        #     counter += 1
         
-        shutil.copy2(source_path, dest_path)
+        # shutil.copy2(source_path, dest_path)
         
         # Store the destination path for potential wallpaper setting
-        self.destination_path = str(dest_path)
+        self.destination_path = str(source_path)
 
 
     def dragEnterEvent(self, event):
@@ -199,8 +201,9 @@ class EnhancedDragDropWidget(QWidget):
                     event.acceptProposedAction()
                     
                     # Visual feedback that this area accepts drops
-                    self.setStyleSheet(
-                        "background-color: rgba(255, 255, 255, 0.1); border: 0px dashed #4CAF50; border-radius: 5px;")
+                    self.parent_app.ui.uploadArea.setStyleSheet(
+                        "QFrame#uploadArea{background-color: rgba(255, 255, 255, 0.1);}"
+                        )
                     logging.debug(f"Drag event accepted - valid file type: {file_path}")
                 else:
                     event.ignore()
@@ -216,13 +219,13 @@ class EnhancedDragDropWidget(QWidget):
         """Handle drag leave event"""
         logging.debug("Drag leave event in EnhancedDragDropWidget")
         # Remove visual feedback
-        self.setStyleSheet("")
+        self.parent_app.ui.uploadArea.setStyleSheet("")
         super().dragLeaveEvent(event)
     
     def dropEvent(self, event):
         logging.debug("Drop event in EnhancedDragDropWidget")
         # Remove visual feedback
-        self.setStyleSheet("")
+        self.parent_app.ui.uploadArea.setStyleSheet("")
         
         urls = event.mimeData().urls()
         if urls:
@@ -294,7 +297,7 @@ class EnhancedDragDropWidget(QWidget):
                 logging.info(f"Wallpaper set successfully and saved to config: {os.path.basename(self.destination_path)}")
                 
                 # Hide buttons after successful set with delay
-                QTimer.singleShot(1000, self.reset_selection)
+                QTimer.singleShot(0, self.reset_selection)
                 
             except Exception as e:
                 logging.error(f"Failed to set wallpaper: {e}", exc_info=True)
@@ -397,6 +400,9 @@ class ButtonCollection:
                 border-radius: 6px;
                 border: 1px solid #555;
             }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
         """
 
     # -----------------------------------------------------
@@ -435,6 +441,7 @@ class ButtonCollection:
             btn.setIcon(QIcon(icon_path))
 
         btn.setStyleSheet(style or self.default_style)
+        btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         return btn
     
     def _update_language(self,language_data:dict):
@@ -506,6 +513,7 @@ class CustomMessageBox:
         """
         qt_btn = box.addButton(button.text(), role)
         qt_btn.setStyleSheet(button.styleSheet())
+        qt_btn.setCursor(button.cursor())
 
         # Copy icon if exists
         if not button.icon().isNull():

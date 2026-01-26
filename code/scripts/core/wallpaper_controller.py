@@ -5,18 +5,31 @@ import platform
 import os
 import re
 import time
+import json
 
+from screeninfo import get_monitors
 from PySide6.QtWidgets import QMessageBox
+from ui.widgets import CustomMessageBox
 
-from utils.system_utils import which, set_static_desktop_wallpaper,get_windows_version
-from utils.path_utils import get_weebp_path, get_mpv_path, get_tools_path
+from utils.system_utils import (
+    which,
+    set_static_desktop_wallpaper,
+    get_windows_version,
+)
+from utils.path_utils import (
+    get_weebp_path,
+    get_mpv_path,
+    get_tools_path,
+)
 from utils.command_handler import run_and_forget_silent
 
 
 class WallpaperController:
     def __init__(self):
-        self.player_procs = []
         self.current_is_video = False
+
+        # IPC pipe names (one per monitor)
+        self._mpv_ipc_pipes = []
 
         # Cached paths
         self.tools_path = get_tools_path()
@@ -24,12 +37,16 @@ class WallpaperController:
         self.mpv_path = get_mpv_path()
 
         # Refresh limits
-        self.refresh_limit = 6
+        self.refresh_limit = 100
         self.refresh_count = 0
 
         if not self._check_weebp_and_mpv():
-            QMessageBox.critical(None, "Error",
-                                 "Weebp or MPV executable not found. Video wallpaper functionality may be limited.")
+            QMessageBox.critical(
+                None,
+                # TODO: Add translations later
+                "Error", # have to add in translations later
+                "Weebp or MPV executable not found. Video wallpaper functionality may be limited.", # have to add in translations later
+            )
             sys.exit(1)
 
     # ---------------------------------------------------------
@@ -37,39 +54,43 @@ class WallpaperController:
     # ---------------------------------------------------------
     def _check_weebp_and_mpv(self) -> bool:
         return (
-            self.weebp_path is not None and self.weebp_path.exists() and
-            self.mpv_path is not None and self.mpv_path.exists()
+            self.weebp_path is not None
+            and self.weebp_path.exists()
+            and self.mpv_path is not None
+            and self.mpv_path.exists()
         )
 
     # ---------------------------------------------------------
     #  Optional Tools
     # ---------------------------------------------------------
-    def _run_auto_pause(self):
-        exe_path = os.path.join(self.tools_path, "autoPause.exe")
-        run_and_forget_silent([exe_path])
-        logging.info("Launched autoPause.exe")
-
     def _run_refresh(self):
-        """Repeatedly checks for a valid view ID before refreshing."""
         view_id = self.get_view_id()
+        logging.info(f"View ID obtained: {view_id}")
 
-        if view_id == "0" and self.refresh_count < self.refresh_limit:
-            self.refresh_count += 1
-            time.sleep(1)
-            return self._run_refresh()
-
+        if view_id == "0":
+            if self.refresh_count < self.refresh_limit:
+                logging.warning("View ID not ready, retrying refresh...")
+                self.refresh_count += 1
+                time.sleep(.3)
+                return self._run_refresh()
+            elif self.refresh_count >= self.refresh_limit:
+                logging.error("Max refresh attempts reached, aborting refresh.")
+                CustomMessageBox.critical(
+                    None,
+                    # TODO: Add translations later
+                    "Attempt Error", # have to add in translations later
+                    "Failed to set animated wallpaper. Aborting operation.", # have to add in translations later
+                )
+                self.stop()
+                return
+        
         refresh_exe = os.path.join(self.tools_path, "refresh.exe")
-        # refresh.exe is a Windows 11 utility that brings desktop icons to the foreground (above the video wallpaper)
         run_and_forget_silent([refresh_exe, f"0x{view_id}"])
         logging.info("Launched refresh.exe")
 
     def run_optional_tools(self):
-        # self._run_auto_pause()
         if get_windows_version() == "Windows11":
             self._run_refresh()
-        else:
-            pass
-
 
     # ---------------------------------------------------------
     #  STOP
@@ -78,143 +99,148 @@ class WallpaperController:
         logging.info("Stopping wallpaper processes...")
 
         if sys.platform.startswith("linux"):
-            for proc in ("xwinwrap", "mpv"):
-                subprocess.call(
-                    f"pkill -f {proc}", shell=True,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
+            subprocess.call(
+                "pkill -f mpv",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
         elif sys.platform.startswith("win") and self.current_is_video:
             self._stop_windows()
 
         self.current_is_video = False
-        logging.info("All wallpaper processes stopped")
+        self._mpv_ipc_pipes.clear()
 
     def _stop_windows(self):
-        self._clear_playlist()
-
         kill_list = ["mpv.exe", "wp.exe", "autopause.exe", "refresh.exe"]
 
         for proc in kill_list:
-            try:
-                subprocess.run(["taskkill", "/F", "/IM", proc, "/T"],
-                               check=False,
-                               creationflags=0x08000000,
-                               stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            subprocess.run(
+                ["taskkill", "/F", "/IM", proc, "/T"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=0x08000000,
+            )
 
     # ---------------------------------------------------------
-    #  VIDEO STARTERS
+    #  START VIDEO
     # ---------------------------------------------------------
     def start_video(self, video_path: str):
-        logging.debug(f"Current is video: {self.current_is_video}")
-
         if platform.system() == "Windows":
             if self.current_is_video:
-                return self._play_next_video(video_path)
+                self._play_next_video(video_path)
+                return
 
             self.current_is_video = True
-            return self._start_video_windows(video_path)
+            self._start_video_windows(video_path)
+            return
 
         if sys.platform.startswith("linux"):
-            return self._start_video_linux(video_path)
+            self._start_video_linux(video_path)
+            return
 
-        return self._start_video_fallback(video_path)
+        self._start_video_fallback(video_path)
 
     # ---------------------------------------------------------
-    #  Playlist Control (Windows)
+    #  MPV IPC (REAL CONTROL)
     # ---------------------------------------------------------
-    def _clear_playlist(self):
-        """Clears MPV playlist via weebp."""
-        cmd = [str(self.weebp_path), "mpv", "playlist-clear"]
-        run_and_forget_silent(cmd, cwd=self.mpv_path.parents[0])
-        time.sleep(0.5)
+    def _mpv_ipc(self, pipe_name: str, command: list, silent=False):
+        payload = json.dumps({"command": command}) + "\n"
+        pipe_path = r"\\.\pipe\\" + pipe_name
 
-    def _play_next_video(self, video_path):
-        """Append & switch to next."""
-        base_cmd = str(self.weebp_path)
+        try:
+            with open(pipe_path, "w", encoding="utf-8") as pipe:
+                pipe.write(payload)
+                pipe.flush()
+            return True
 
-        run_and_forget_silent(
-            [base_cmd, "mpv", "loadfile", video_path, "append"],
-            cwd=self.mpv_path.parents[0]
-        )
-        time.sleep(0.2)
+        except FileNotFoundError:
+            # IPC pipe not created yet (normal during startup)
+            if not silent:
+                logging.debug("IPC pipe not ready yet: %s", pipe_name)
+            return False
 
-        run_and_forget_silent(
-            [base_cmd, "mpv", "playlist-next"],
-            cwd=self.mpv_path.parents[0]
-        )
+        except Exception as e:
+            logging.error("IPC failed (%s): %s", pipe_name, e)
+            return False
+
+    # ---------------------------------------------------------
+    #  PLAY NEXT VIDEO (ALL MONITORS)
+    # ---------------------------------------------------------
+    def _play_next_video(self, video_path: str):
+        if not self._mpv_ipc_pipes:
+            logging.error("No active mpv IPC pipes")
+            return
+
+        for pipe in self._mpv_ipc_pipes:
+            self._mpv_ipc(pipe, ["loadfile", video_path, "replace"])
+
+        logging.info("Wallpaper video switched on all monitors")
 
     # ---------------------------------------------------------
     #  WINDOWS VIDEO START
     # ---------------------------------------------------------
     def _start_video_windows(self, video_path: str):
         try:
-            weebp = str(self.weebp_path)
+            monitors = get_monitors()
             mpv_cwd = self.mpv_path.parents[0]
 
-            mpv_cmd = [
-                weebp, "run", "mpv", video_path,
-                "--input-ipc-server=\\\\.\\pipe\\mpvsocket",
-                "--fullscreen",
-                "--panscan=1.0",
-                "--no-border",
-                "--geometry=100%x100%",
-                "--autofit=100%x100%",
-                "--keep-open=yes",
-                "--loop=inf"
-            ]
+            self._mpv_ipc_pipes.clear()
+
+            for idx, _ in enumerate(monitors):
+                cmd = self._build_mpv_cmd(video_path, idx)
+                run_and_forget_silent(cmd, cwd=mpv_cwd)
+
+                self._mpv_ipc_pipes.append(f"mpv_wallpaper_{idx}")
+                time.sleep(0.25)
 
             add_cmd = [
-                weebp, "add", "--wait",
-                "--fullscreen", "--class", "mpv"
+                str(self.weebp_path),
+                "add",
+                "--wait",
+                "--fullscreen",
+                "--class",
+                "mpv",
             ]
-
-            run_and_forget_silent(mpv_cmd, cwd=mpv_cwd)
-            time.sleep(0.6)
-
+            
             run_and_forget_silent(add_cmd, cwd=mpv_cwd)
-            time.sleep(0.4)
 
+            # 🔴 WAIT UNTIL IPC EXISTS + PLAYBACK STARTED
+            if not self._wait_for_mpv_ready():
+                logging.warning("mpv did not become ready in time")
+
+            # ✅ NOW SAFE
             self.run_optional_tools()
-            logging.info("MPV wallpaper successfully attached.")
+
+
+
         except Exception as e:
-            logging.error(f"Failed to start wallpaper: {e}")
+            logging.error("Failed to start video wallpaper", exc_info=True)
 
     # ---------------------------------------------------------
     #  LINUX VIDEO START
     # ---------------------------------------------------------
     def _start_video_linux(self, video_path):
-        xwinwrap = which("xwinwrap")
         mpv = which("mpv")
+        if not mpv:
+            raise RuntimeError("mpv not found")
 
-        if xwinwrap and mpv:
-            try:
-                cmd = (
-                    f"{xwinwrap} -ov -fs -- "
-                    f"{mpv} --loop --no-audio --no-osd-bar --wid=WID '{video_path}'"
-                )
-                p = subprocess.Popen(cmd, shell=True, executable="/bin/bash",
-                                     stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL)
-                self.player_procs.append(p)
-                return
-            except Exception as e:
-                logging.error(f"xwinwrap failed: {e}")
-
-        if mpv:
-            p = subprocess.Popen(
-                [mpv, "--loop", "--no-audio", "--no-osd-bar", "--fullscreen", "--no-border", video_path],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.player_procs.append(p)
-            return
-
-        raise RuntimeError("No suitable video wallpaper backend (xwinwrap/mpv).")
+        subprocess.Popen(
+            [
+                mpv,
+                "--loop",
+                "--no-audio",
+                "--fullscreen",
+                "--no-border",
+                video_path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     # ---------------------------------------------------------
-    #  FALLBACK VIDEO START
+    #  FALLBACK
     # ---------------------------------------------------------
     def _start_video_fallback(self, video_path):
         mpv = which("mpv")
@@ -222,18 +248,23 @@ class WallpaperController:
             raise RuntimeError(f"Unsupported platform: {sys.platform}")
 
         subprocess.Popen(
-            [mpv, "--loop", "--no-audio", "--fullscreen", "--no-border", video_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            [
+                mpv,
+                "--loop",
+                "--no-audio",
+                "--fullscreen",
+                "--no-border",
+                video_path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     # ---------------------------------------------------------
     #  STATIC IMAGE
     # ---------------------------------------------------------
     def start_image(self, image_path):
-        try:
-            set_static_desktop_wallpaper(image_path)
-        except Exception as e:
-            logging.error(f"Failed to set wallpaper: {e}")
-            raise
+        set_static_desktop_wallpaper(image_path)
 
         if self.current_is_video:
             self.stop()
@@ -241,21 +272,67 @@ class WallpaperController:
         self.current_is_video = False
 
     # ---------------------------------------------------------
-    #  VIEW ID PARSING (Windows)
+    #  VIEW ID (Windows 11)
     # ---------------------------------------------------------
     def get_view_id(self) -> str:
         try:
             proc = subprocess.run(
-                [self.weebp_path, "ls"],
+                [str(self.weebp_path), "ls"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                creationflags=0x08000000,
             )
         except Exception:
             return "0"
-
-        output = proc.stdout
-        logging.info(f"wp.exe ls output:\n{output}")
-
-        match = re.search(r'\[([0-9A-Fa-f]{8})\].*?mpv', output)
+        logging.debug("Result of 'weebp ls': %s", proc.stdout.strip())
+        match = re.search(r"\[([0-9A-Fa-f]{8})\].*?mpv", proc.stdout)
         return match.group(1) if match else "0"
+
+    # ---------------------------------------------------------
+    #  MPV COMMAND BUILDER
+    # ---------------------------------------------------------
+    def _build_mpv_cmd(self, video_path: str, screen_index: int):
+        return [
+            str(self.weebp_path),
+            "run",
+            "mpv",
+            video_path,
+            f"--screen={screen_index}",
+            "--fullscreen",
+            "--no-border",
+            "--panscan=1.0",
+            "--loop=inf",
+            "--keep-open=yes",
+            "--hwdec=auto-safe",
+            "--no-audio",
+            "--no-osd-bar",
+            "--osd-level=0",
+            f"--input-ipc-server=\\\\.\\pipe\\mpv_wallpaper_{screen_index}",
+        ]
+
+    def _wait_for_mpv_ready(self, timeout=6.0) -> bool:
+        start = time.time()
+
+        while time.time() - start < timeout:
+            all_ready = True
+
+            for pipe in self._mpv_ipc_pipes:
+                ok = self._mpv_ipc(
+                    pipe,
+                    ["get_property", "time-pos"],
+                    silent=True
+                )
+                if not ok:
+                    all_ready = False
+                    break
+
+            if all_ready:
+                logging.info("mpv playback confirmed")
+                return True
+
+            time.sleep(0.1)
+
+        return False
+# ============================================================
+

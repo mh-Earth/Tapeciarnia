@@ -10,7 +10,7 @@ class RangeTypes(Enum):
     STATIC = "wallpaper"
     ALL = "all"
 
-class Souces(Enum):
+class Sources(Enum):
     SUPER = "super"
     FAVOURITE = "favourite"
     COLLECTION = "collection"

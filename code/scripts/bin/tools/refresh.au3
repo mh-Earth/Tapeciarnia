@@ -35,7 +35,7 @@ EndIf
 Local $hAppWnd = $CmdLine[1]
 
 ; Step 0: Close any existing WorkerW windows to ensure a fresh environment.
-_CloseAllWorkerWWindows()
+;~ _CloseAllWorkerWWindows()
 
 ; Step 1: Retrieve the WorkerW window handle.
 ; The WorkerW window is created by the Explorer process and usually sits behind
