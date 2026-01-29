@@ -95,7 +95,7 @@ class TapeciarniaApp(QMainWindow):
         self.drag_drop_widget = EnhancedDragDropWidget(self)
 
         # State
-        self.previous_wallpaper = get_current_desktop_wallpaper()
+        # self.previous_wallpaper = get_current_desktop_wallpaper()
         self.is_minimized_to_tray = False
 
         # Setup
@@ -130,6 +130,10 @@ class TapeciarniaApp(QMainWindow):
             This is the overridden method that captures the click event.
             """
             # Call the base class implementation first (important)
+            if self.drag_drop_widget.dropped_file_path:
+                logging.debug("File already dropped, ignoring browse click")
+                return
+            
             super().mousePressEvent(event)
             logging.debug("Lanuching file browser...")
             
@@ -281,12 +285,12 @@ class TapeciarniaApp(QMainWindow):
         
         # Use the enhanced drag drop widget to restore original wallpaper
         if hasattr(self, 'drag_drop_widget'):
-            self.drag_drop_widget.restore_original_wallpaper()
-        elif self.previous_wallpaper:
-            self.controller.start_image(self.previous_wallpaper)
-            self._set_status(self.language_controller.get("status.genaral.Failed_to_restore_original_wallpaper")) #
-        else:
-            self._set_status(self.language_controller.get("status.genaral.reset_complete"))
+            self.drag_drop_widget.reset_selection()
+        # elif self.previous_wallpaper:
+            # self.controller.start_image(self.previous_wallpaper)
+            # self._set_status(self.language_controller.get("status.genaral.Failed_to_restore_original_wallpaper")) #
+        # else:
+            # self._set_status(self.language_controller.get("status.genaral.reset_complete"))
         
         # Clear URL input
         if hasattr(self.ui, 'urlInput'):

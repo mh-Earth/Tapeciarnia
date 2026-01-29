@@ -9,12 +9,13 @@ import json
 
 from screeninfo import get_monitors
 from PySide6.QtWidgets import QMessageBox
-from ui.widgets import CustomMessageBox
+from PySide6.QtCore import QThread
 
 from utils.system_utils import (
     which,
     set_static_desktop_wallpaper,
     get_windows_version,
+    get_current_desktop_wallpaper,
 )
 from utils.path_utils import (
     get_weebp_path,
@@ -22,9 +23,9 @@ from utils.path_utils import (
     get_tools_path,
 )
 from utils.command_handler import run_and_forget_silent
+from ui.widgets import CustomMessageBox
 
-
-class WallpaperController:
+class WallpaperController(QThread):
     def __init__(self):
         self.current_is_video = False
 
@@ -48,6 +49,8 @@ class WallpaperController:
                 "Weebp or MPV executable not found. Video wallpaper functionality may be limited.", # have to add in translations later
             )
             sys.exit(1)
+        # Initial wallpaper at startup
+        self.initial_wallpaper = self._get_initial_wallpaper() 
 
     # ---------------------------------------------------------
     #  Utility Checks
@@ -60,18 +63,34 @@ class WallpaperController:
             and self.mpv_path.exists()
         )
 
+    def _get_current_wallpaper(self):
+        """Get the current system wallpaper path"""
+        try:
+            wallpaper = get_current_desktop_wallpaper()
+            logging.debug(f"Retrieved current wallpaper: {wallpaper}")
+            return wallpaper
+        except Exception as e:
+            logging.error(f"Could not get current wallpaper: {e}", exc_info=True)
+        return None
+
+    def _get_initial_wallpaper(self):
+        """Get the wallpaper that was set when the controller was initialized"""
+        wallpaper = self._get_current_wallpaper()
+        logging.debug(f"Initial wallpaper at startup: {wallpaper}")
+        return wallpaper
+
     # ---------------------------------------------------------
     #  Optional Tools
     # ---------------------------------------------------------
     def _run_refresh(self):
+        time.sleep(0.5)  # wait a moment to ensure weebp has registered the mpv wallpaper
         view_id = self.get_view_id()
         logging.info(f"View ID obtained: {view_id}")
 
         if view_id == "0":
             if self.refresh_count < self.refresh_limit:
-                logging.warning("View ID not ready, retrying refresh...")
+                logging.warning("View ID not found, retrying refresh...")
                 self.refresh_count += 1
-                time.sleep(.3)
                 return self._run_refresh()
             elif self.refresh_count >= self.refresh_limit:
                 logging.error("Max refresh attempts reached, aborting refresh.")
@@ -86,7 +105,7 @@ class WallpaperController:
         
         refresh_exe = os.path.join(self.tools_path, "refresh.exe")
         run_and_forget_silent([refresh_exe, f"0x{view_id}"])
-        logging.info("Launched refresh.exe")
+        # logging.info("Launched refresh.exe")
 
     def run_optional_tools(self):
         if get_windows_version() == "Windows11":
@@ -106,8 +125,17 @@ class WallpaperController:
                 stderr=subprocess.DEVNULL,
             )
 
-        elif sys.platform.startswith("win") and self.current_is_video:
-            self._stop_windows()
+        elif sys.platform.startswith("win"):
+            if self.current_is_video:
+                logging.debug("Stopping video wallpaper processes on Windows")
+                self._stop_windows()
+            else:
+                if self.initial_wallpaper:
+                    logging.debug("Restoring previous static wallpaper on Windows")
+                    print(self.initial_wallpaper)
+                    set_static_desktop_wallpaper(self.initial_wallpaper)
+                else:
+                    logging.warning(f"No previous wallpaper to restore. {self.initial_wallpaper}")
 
         self.current_is_video = False
         self._mpv_ipc_pipes.clear()

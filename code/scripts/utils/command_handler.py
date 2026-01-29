@@ -127,7 +127,7 @@ def run_and_forget_silent(command_parts, cwd=None):
             creationflags=CREATE_NO_WINDOW,
             cwd=cwd
         )
-        logging.info(f"Background process started successfully - PID: {process.pid}")
+        logging.debug(f"Background process started successfully - PID: {process.pid}")
         logging.debug(f"Process object created: {process}")
         return process
         

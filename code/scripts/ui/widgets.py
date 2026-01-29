@@ -248,6 +248,9 @@ class EnhancedDragDropWidget(QWidget):
                 self.upload_btn.show()  # Hidden until user selects destination
                 self.reset_btn.show()   # Always show reset when file is selected
                 
+                #  make the cursor a normal arrow 
+                self.parent_app.ui.uploadArea.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                
                 logging.info(f"Valid {file_type.lower()} file selected: {filename}")
                 
             else:
@@ -263,10 +266,6 @@ class EnhancedDragDropWidget(QWidget):
         if hasattr(self, 'dropped_file_path') and self.dropped_file_path:
             try:
                 self._create_file_path()
-                # Store current wallpaper before setting new one
-                if not hasattr(self, 'previous_wallpaper') or not self.previous_wallpaper:
-                    self.previous_wallpaper = self.get_current_wallpaper()
-                    logging.info(f"Stored original wallpaper: {self.previous_wallpaper}")
                 
                 # stop scheduler if running
                 if self.parent_app.scheduler.is_active():
@@ -298,8 +297,12 @@ class EnhancedDragDropWidget(QWidget):
                 
                 # Hide buttons after successful set with delay
                 QTimer.singleShot(0, self.reset_selection)
+                # make the cursor a pointing hand for the drop area
+                self.parent_app.ui.uploadArea.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 
             except Exception as e:
+                # make the cursor a normal arrow for the drop area
+                self.parent_app.ui.uploadArea.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 logging.error(f"Failed to set wallpaper: {e}", exc_info=True)
                 self.upload_text.setText("Failed to set wallpaper!")
                 QMessageBox.critical(self, "Error", f"Failed to set wallpaper: {str(e)}")
@@ -317,6 +320,8 @@ class EnhancedDragDropWidget(QWidget):
         self.supported_label.show()
         self.toggle_buttons_visibility(False)
         self.reset_btn.hide()  # Hide reset when no file selected
+        # make the cursor a pointing hand for the drop area
+        self.parent_app.ui.uploadArea.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         logging.debug("Drag drop widget reset to initial state")
     
     def is_video_file(self, file_path):
@@ -324,48 +329,6 @@ class EnhancedDragDropWidget(QWidget):
         video_extensions = tuple(self.config.get_valid_video_extensions())
         return file_path.lower().endswith(video_extensions)
 
-    def restore_original_wallpaper(self):
-        """Restore the original wallpaper that was set before any changes"""
-        logging.info("Restoring original wallpaper")
-        if hasattr(self, 'previous_wallpaper') and self.previous_wallpaper:
-            try:
-                logging.info(f"Attempting to restore original wallpaper: {self.previous_wallpaper}")
-                
-                if os.path.exists(self.previous_wallpaper):
-                    if self.is_video_file(self.previous_wallpaper):
-                        logging.info("Restoring original video wallpaper")
-                        self.parent_app.controller.start_video(self.previous_wallpaper)
-                    else:
-                        logging.info("Restoring original image wallpaper")
-                        self.parent_app.controller.start_image(self.previous_wallpaper)
-                    
-                    if hasattr(self.parent_app, '_set_status'):
-                        self.parent_app._set_status("Original wallpaper restored")
-                    
-                    # Update URL input
-                    if hasattr(self.parent_app.ui, 'urlInput'):
-                        self.parent_app.ui.urlInput.setText(self.previous_wallpaper)
-                    
-                    logging.info("Original wallpaper restored successfully")
-                else:
-                    logging.warning(f"Original wallpaper file not found: {self.previous_wallpaper}")
-                    self.parent_app._set_status("Original wallpaper file not found")
-                    
-            except Exception as e:
-                logging.error(f"Failed to restore original wallpaper: {e}", exc_info=True)
-                self.parent_app._set_status("Failed to restore original wallpaper")
-    
-    def get_current_wallpaper(self):
-        """Get the current system wallpaper path"""
-        try:
-            from utils.system_utils import get_current_desktop_wallpaper
-            wallpaper = get_current_desktop_wallpaper()
-            logging.info(f"Retrieved current wallpaper: {wallpaper}")
-            return wallpaper
-        except Exception as e:
-            logging.error(f"Could not get current wallpaper: {e}", exc_info=True)
-        return None
-    
     def is_valid_wallpaper_file(self, file_path):
         """Check if file is a valid wallpaper type with comprehensive validation"""
         valid_extensions = self.config.get_all_valid_extensions()
