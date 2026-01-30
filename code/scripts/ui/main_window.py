@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QAction, QIcon, QPixmap
 from PySide6.QtCore import QTimer, Qt, QEvent, QSize
+from PySide6.QtWidgets import QMessageBox
+
 from .widgets import EnhancedDragDropWidget,CustomMessageBox,ButtonCollection
 
 current_dir = os.path.dirname(__file__)
@@ -460,6 +462,10 @@ class TapeciarniaApp(QMainWindow):
         self.is_minimized_to_tray = False
         logging.debug("Window restored from tray")
 
+    def _open_tapeciarnia_website(self):
+        """Open the Tapeciarnia website in the default browser"""
+        logging.info("Opening Tapeciarnia website in default browser")
+        webbrowser.open("https://tapeciarnia.pl")
 
     def _setup_ui(self):
         """Setup UI connections and initial state"""
@@ -1680,7 +1686,7 @@ class TapeciarniaApp(QMainWindow):
             self.language_controller.get("dialog.qustions.confirm_reset_dia"),
         )
         
-        if reply == 2:
+        if reply == QMessageBox.YesRole:
             logging.info("User confirmed reset")
             self._perform_reset()
             self._set_status(self.language_controller.get("status.genaral.reset_completed_successfully"))
@@ -1688,7 +1694,7 @@ class TapeciarniaApp(QMainWindow):
         else:
             logging.info("User cancelled reset")
             self._set_status(self.language_controller.get("status.genaral.reset_cancelled"))
-           
+
     
 
     def download_and_set_online_wallpaper(self, url: str, is_animated: bool):
@@ -2016,7 +2022,10 @@ class TapeciarniaApp(QMainWindow):
         
         # Create context menu
         tray_menu = QMenu()
-        
+
+        open_tapeciarnia_website_action = QAction("Open Tapeciarnia", self)
+        open_tapeciarnia_website_action.triggered.connect(self._open_tapeciarnia_website)
+
         show_action = QAction("Show Window", self)
         show_action.triggered.connect(self.show_from_tray)
         
@@ -2036,8 +2045,9 @@ class TapeciarniaApp(QMainWindow):
         reset_action.triggered.connect(self._perform_reset_with_confirmation)
         
         tray_menu.addAction(show_action)
-        # tray_menu.addAction(hide_action)
         tray_menu.addSeparator()
+        tray_menu.addAction(open_tapeciarnia_website_action)
+        # tray_menu.addAction(hide_action)
         tray_menu.addAction(shuffle_static_action)
         tray_menu.addAction(shuffle_animated_action)
         tray_menu.addSeparator()
@@ -2202,22 +2212,30 @@ class TapeciarniaApp(QMainWindow):
             self.ui.user_name_label.setVisible(False)
 
 
-    def _exit_app(self,event):
+
+    def _exit_app(self, event):
         """Properly quit the application from tray menu with confirmation and progress"""
         logging.info("Exit from tray menu triggered")
+
         reply = self.customMessageBox.question(
             self,
             self.language_controller.get("dialog.qustions.confirm_exit_title"),
             self.language_controller.get("dialog.qustions.confirm_exit_dialog"),
-
         )
 
-        if reply == 2:
-            logging.info("User confirmed exit from tray")
-            # Show shutdown progress for tray exit too
+        if reply == QMessageBox.YesRole:
+            logging.info("User confirmed exit")
             self._perform_shutdown(event)
+            QApplication.quit()
+
+        elif reply == QMessageBox.NoRole:
+            logging.info("User chose No – do nothing")
+
+        elif reply == QMessageBox.RejectRole:
+            logging.info("User cancelled exit")
+        
         else:
-            logging.info("User cancelled exit from tray")
+            logging.warning(f"Unknown response from exit confirmation dialog: {reply}")
 
     def apply_wallpaper_from_uris(self,url:str,file_type:WallpaperType,params:dict):
         """Main method to apply wallpaper from URI."""
@@ -2273,6 +2291,12 @@ class TapeciarniaApp(QMainWindow):
                 logging.warning(f"Unsupported URI action received: {action}")
                 return # Ignore unsupported actions
 
+            # If the app is not hidden in icon tray, show the main window to indicate action processing
+            if self.isVisible():
+                self.show()
+                self.raise_()
+                self.activateWindow()
+                
             # pop up a notification to inform user about the received command if the app is already hidden in icon tray
             if not self.isVisible() and hasattr(self, 'tray'):
                 self.tray.showMessage(
@@ -2281,6 +2305,7 @@ class TapeciarniaApp(QMainWindow):
                     QSystemTrayIcon.Information,
                     1500
                 )
+
 
             # Check for the required 'url' parameter for most actions
             wallpaper_url = params.get('url')

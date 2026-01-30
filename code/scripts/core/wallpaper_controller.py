@@ -1,3 +1,8 @@
+# ===========================================================
+#  Wallpaper Controller
+# ===========================================================
+
+
 import sys
 import subprocess
 import logging
@@ -62,6 +67,9 @@ class WallpaperController(QThread):
             and self.mpv_path is not None
             and self.mpv_path.exists()
         )
+    # ---------------------------------------------------------
+    #  Initial Wallpaper Handling
+    # ---------------------------------------------------------
 
     def _get_current_wallpaper(self):
         """Get the current system wallpaper path"""
@@ -78,6 +86,14 @@ class WallpaperController(QThread):
         wallpaper = self._get_current_wallpaper()
         logging.debug(f"Initial wallpaper at startup: {wallpaper}")
         return wallpaper
+    
+    def _restore_initial_wallpaper(self):
+        """Restore the wallpaper that was set when the app was initialized"""
+        if self.initial_wallpaper:
+            logging.info("Restoring initial wallpaper...")
+            set_static_desktop_wallpaper(self.initial_wallpaper)
+        else:
+            logging.warning("No initial  wallpaper found to restore.")
 
     # ---------------------------------------------------------
     #  Optional Tools
@@ -98,7 +114,7 @@ class WallpaperController(QThread):
                     None,
                     # TODO: Add translations later
                     "Attempt Error", # have to add in translations later
-                    "Failed to set animated wallpaper. Aborting operation.", # have to add in translations later
+                    "Failed to set animated wallpaper.\nAborting operation.\nTry again", # have to add in translations later
                 )
                 self.stop()
                 return
@@ -130,12 +146,7 @@ class WallpaperController(QThread):
                 logging.debug("Stopping video wallpaper processes on Windows")
                 self._stop_windows()
             else:
-                if self.initial_wallpaper:
-                    logging.debug("Restoring previous static wallpaper on Windows")
-                    print(self.initial_wallpaper)
-                    set_static_desktop_wallpaper(self.initial_wallpaper)
-                else:
-                    logging.warning(f"No previous wallpaper to restore. {self.initial_wallpaper}")
+                self._restore_initial_wallpaper()
 
         self.current_is_video = False
         self._mpv_ipc_pipes.clear()

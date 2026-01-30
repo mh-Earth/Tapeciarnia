@@ -167,53 +167,30 @@ class EnhancedDragDropWidget(QWidget):
         """Add a copy of the dropped file to specified destination and show set as wallpaper option"""
         if not self.dropped_file_path:
             return
+        self.destination_path = str(Path(self.dropped_file_path))
         
-        source_path = Path(self.dropped_file_path)
-        
-        # # Determine destination folder
-        # dest_folder = SAVES_DIR
-        
-        # # Copy file with duplicate handling
-        # dest_path = SAVES_DIR / source_path.name
-        # counter = 1
-        # original_stem = source_path.stem
-        # while dest_path.exists():
-        #     dest_path = dest_folder / f"{original_stem}_{counter}{source_path.suffix}"
-        #     counter += 1
-        
-        # shutil.copy2(source_path, dest_path)
-        
-        # Store the destination path for potential wallpaper setting
-        self.destination_path = str(source_path)
 
 
     def dragEnterEvent(self, event):
         """Check for valid file types when file enters the drop area"""
         logging.debug("Drag enter event in EnhancedDragDropWidget")
         
-        if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            if urls:
-                file_path = urls[0].toLocalFile()
-                
-                # Check if it's a valid wallpaper file type
-                if self.is_valid_wallpaper_file(file_path):
-                    event.acceptProposedAction()
-                    
-                    # Visual feedback that this area accepts drops
-                    self.parent_app.ui.uploadArea.setStyleSheet(
-                        "QFrame#uploadArea{background-color: rgba(255, 255, 255, 0.1);}"
-                        )
-                    logging.debug(f"Drag event accepted - valid file type: {file_path}")
-                else:
-                    event.ignore()
-                    logging.debug(f"Drag event ignored - invalid file type: {file_path}")
+        urls = event.mimeData().urls()
+        if urls:
+            file_path = urls[0].toLocalFile()
+            
+            if self.is_valid_wallpaper_file(file_path):
+                event.acceptProposedAction()
+                self.parent_app.ui.uploadArea.setStyleSheet(
+                    "QFrame#uploadArea{background-color: rgba(255, 255, 255, 0.1);}"
+                )
+                logging.debug(f"Drag event accepted - valid file: {file_path}")
             else:
                 event.ignore()
-                logging.debug("Drag event ignored - no valid file URLs")
+                logging.debug(f"Drag event ignored - invalid file: {file_path}")
         else:
             event.ignore()
-            logging.debug("Drag event ignored - no URLs")
+            logging.debug("Drag event ignored - no file URLs")
 
     def dragLeaveEvent(self, event):
         """Handle drag leave event"""
@@ -526,7 +503,15 @@ class CustomMessageBox:
         ).exec()
 
     def question(self, parent, title, message):
-        return self._create_box(
+        box = self._create_box(
             parent, QMessageBox.Question, title, message,
             show_yes=True, show_no=True, show_cancel=True
-        ).exec()
+        )
+
+        box.exec()
+
+        btn = box.clickedButton()
+        if not btn:
+            return QMessageBox.RejectRole
+
+        return box.buttonRole(btn)
