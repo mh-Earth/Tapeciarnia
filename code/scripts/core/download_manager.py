@@ -160,8 +160,12 @@ class ImageDownloadThread(QThread):
                         
                         if total_size > 0:
                             percent = (downloaded_size / total_size) * 100
-                            status = f"{self.traslator.get(('status.genaral.downloading_wallpaper'))} {percent:.1f}%"
+                            mb_downloaded = downloaded_size / (1024 * 1024)
+                            mb_total = total_size / (1024 * 1024)
+                            
+                            status = f"{self.traslator.get(('status.genaral.downloading_wallpaper'))} {percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)"
                             self.progress.emit(percent, status)
+                            
                         else:
                             status = f"{downloaded_size / 1024:.1f} KB"
                             self.progress.emit(0, status)

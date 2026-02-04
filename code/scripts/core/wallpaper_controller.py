@@ -11,12 +11,15 @@ import os
 import re
 import time
 import json
+import tomllib
 
 from screeninfo import get_monitors
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import QThread
 
 from utils.system_utils import (
+    get_monitor_dpi_from_point,
+    get_monitors_dpi_info,
     which,
     set_static_desktop_wallpaper,
     get_windows_version,
@@ -28,7 +31,9 @@ from utils.path_utils import (
     get_tools_path,
 )
 from utils.command_handler import run_and_forget_silent
-from ui.widgets import CustomMessageBox
+from ui.widgets import CustomMessageBox,ButtonCollection
+from utils.singletons import get_config,get_language_controller
+from utils.path_utils import video_settings_path
 
 class WallpaperController(QThread):
     def __init__(self):
@@ -43,11 +48,17 @@ class WallpaperController(QThread):
         self.mpv_path = get_mpv_path()
 
         # Refresh limits
-        self.refresh_limit = 100
+        self.refresh_limit = 50
         self.refresh_count = 0
+        # Translator
+        self.language_controller = get_language_controller()
+        # custom message box
+        self.customMessageBox = CustomMessageBox(ButtonCollection(language_data=self.language_controller.lang))
+        self.ids_list: list = []
+
 
         if not self._check_weebp_and_mpv():
-            QMessageBox.critical(
+            self.customMessageBox.critical(
                 None,
                 # TODO: Add translations later
                 "Error", # have to add in translations later
@@ -101,31 +112,35 @@ class WallpaperController(QThread):
     def _run_refresh(self):
         time.sleep(0.5)  # wait a moment to ensure weebp has registered the mpv wallpaper
         view_id = self.get_view_id()
-        logging.info(f"View ID obtained: {view_id}")
-
-        if view_id == "0":
-            if self.refresh_count < self.refresh_limit:
-                logging.warning("View ID not found, retrying refresh...")
-                self.refresh_count += 1
-                return self._run_refresh()
-            elif self.refresh_count >= self.refresh_limit:
-                logging.error("Max refresh attempts reached, aborting refresh.")
-                CustomMessageBox.critical(
-                    None,
-                    # TODO: Add translations later
-                    "Attempt Error", # have to add in translations later
-                    "Failed to set animated wallpaper.\nAborting operation.\nTry again", # have to add in translations later
-                )
-                self.stop()
-                return
-        
-        refresh_exe = os.path.join(self.tools_path, "refresh.exe")
-        run_and_forget_silent([refresh_exe, f"0x{view_id}"])
-        # logging.info("Launched refresh.exe")
+        logging.info(f"View IDs obtained: {view_id}")
+        for ids in view_id:
+            logging.info(f"Processing View ID: {ids}")
+            if ids == "0": # and ids not in self.ids_list:
+                if self.refresh_count < self.refresh_limit:
+                    logging.warning("View ID not found, retrying refresh...")
+                    self.refresh_count += 1
+                    return self._run_refresh()
+                elif self.refresh_count >= self.refresh_limit:
+                    logging.error("Max refresh attempts reached, aborting refresh.")
+                    self.customMessageBox.critical(
+                        None,
+                        # TODO: Add translations later
+                        "Attempt Error", # have to add in translations later
+                        "Failed to set animated wallpaper.\nAborting operation.\nTry again", # have to add in translations later
+                    )
+                    self.stop()
+                    return
+            else :
+                refresh_exe = os.path.join(self.tools_path, "refresh.exe")
+                run_and_forget_silent([refresh_exe, f"0x{ids}"])
+                self.refresh_count = 0  # reset count on success
+                self.ids_list.append(ids)
+            
 
     def run_optional_tools(self):
         if get_windows_version() == "Windows11":
             self._run_refresh()
+            pass
 
     # ---------------------------------------------------------
     #  STOP
@@ -224,33 +239,64 @@ class WallpaperController(QThread):
         try:
             monitors = get_monitors()
             mpv_cwd = self.mpv_path.parents[0]
-
             self._mpv_ipc_pipes.clear()
 
-            for idx, _ in enumerate(monitors):
-                cmd = self._build_mpv_cmd(video_path, idx)
+            for idx, monitor in enumerate(monitors):
+                print(f"Starting wallpaper on monitor {idx}: {monitor.x}, {monitor.y} - {monitor.width}x{monitor.height}")
+                cmd = self._build_mpv_cmd(video_path, idx, monitor)
                 run_and_forget_silent(cmd, cwd=mpv_cwd)
 
                 self._mpv_ipc_pipes.append(f"mpv_wallpaper_{idx}")
-                time.sleep(0.25)
+                time.sleep(0.5)
 
-            add_cmd = [
-                str(self.weebp_path),
-                "add",
-                "--wait",
-                "--fullscreen",
-                "--class",
-                "mpv",
-            ]
-            
-            run_and_forget_silent(add_cmd, cwd=mpv_cwd)
+                add_cmd = [
+                    str(self.weebp_path),
+                    "add",
+                    "--wait",
+                    "--fullscreen",
+                    "--name",
+                    f"mpv_wallpaper_{idx}",
+                ]
+                run_and_forget_silent(add_cmd, cwd=mpv_cwd)
+                time.sleep(0.3)
+
 
             # 🔴 WAIT UNTIL IPC EXISTS + PLAYBACK STARTED
             if not self._wait_for_mpv_ready():
                 logging.warning("mpv did not become ready in time")
-
+            
             # ✅ NOW SAFE
             self.run_optional_tools()
+
+
+
+            # get mpv window handles (one per monitor)
+            view_ids = list(reversed(self.get_view_id()))
+
+            monitor_info = get_monitors_dpi_info()  # contains ui_scale
+            assert len(view_ids) >= len(monitors)
+
+            for idx, (monitor, view_id) in enumerate(zip(monitors, view_ids)):
+                scale = monitor_info[idx]["ui_scale"]
+
+                # logical → physical
+                phys_x = int(monitor.x * scale)
+                phys_y = int(monitor.y * scale)
+                phys_w = int(monitor.width * scale)
+                phys_h = int(monitor.height * scale)
+
+                move_cmd = [
+                    str(self.weebp_path),
+                    "mv",
+                    "-a", f"0x{view_id}",
+                    "-x", str(phys_x),
+                    "-y", str(phys_y),
+                    "--width", str(phys_w),
+                    "--height", str(phys_h),
+                ]
+
+                run_and_forget_silent(move_cmd)
+                time.sleep(0.3)
 
 
 
@@ -313,7 +359,7 @@ class WallpaperController(QThread):
     # ---------------------------------------------------------
     #  VIEW ID (Windows 11)
     # ---------------------------------------------------------
-    def get_view_id(self) -> str:
+    def get_view_id(self) -> list[str]:
         try:
             proc = subprocess.run(
                 [str(self.weebp_path), "ls"],
@@ -323,32 +369,54 @@ class WallpaperController(QThread):
                 creationflags=0x08000000,
             )
         except Exception:
-            return "0"
-        logging.debug("Result of 'weebp ls': %s", proc.stdout.strip())
-        match = re.search(r"\[([0-9A-Fa-f]{8})\].*?mpv", proc.stdout)
-        return match.group(1) if match else "0"
+            return []
+
+        logging.info("Result of 'weebp ls':\n  %s", proc.stdout.strip())
+
+        # Match lines like: [00A1B2C3] mpv_wallpaper_0
+        matches = re.findall(
+            r"\[([0-9A-Fa-f]{8})\].*?mpv",
+            proc.stdout
+        )
+
+        return matches
 
     # ---------------------------------------------------------
     #  MPV COMMAND BUILDER
     # ---------------------------------------------------------
-    def _build_mpv_cmd(self, video_path: str, screen_index: int):
+    def _build_mpv_cmd(self, video_path: str, screen_index: int,monitor=None) -> list:
         return [
             str(self.weebp_path),
             "run",
             "mpv",
             video_path,
+
+            # PER-MONITOR ISOLATION
             f"--screen={screen_index}",
-            "--fullscreen",
-            "--no-border",
-            "--panscan=1.0",
-            "--loop=inf",
-            "--keep-open=yes",
-            "--hwdec=auto-safe",
-            "--no-audio",
-            "--no-osd-bar",
-            "--osd-level=0",
+            f"--title=mpv_wallpaper_{screen_index}",
+            *self.load_video_settings(),  # load video settings for debugging
+
+
             f"--input-ipc-server=\\\\.\\pipe\\mpv_wallpaper_{screen_index}",
+
+
+
         ]
+    def _mpv_ipc_json(self, pipe_name: str, command: list, silent=False):
+        payload = json.dumps({"command": command}) + "\n"
+        pipe_path = r"\\.\pipe\\" + pipe_name
+
+        try:
+            with open(pipe_path, "r+", encoding="utf-8") as pipe:
+                pipe.write(payload)
+                pipe.flush()
+                return json.loads(pipe.readline())
+
+        except Exception:
+            if not silent:
+                logging.debug("IPC JSON failed: %s", pipe_name)
+            return None
+
 
     def _wait_for_mpv_ready(self, timeout=6.0) -> bool:
         start = time.time()
@@ -357,21 +425,48 @@ class WallpaperController(QThread):
             all_ready = True
 
             for pipe in self._mpv_ipc_pipes:
-                ok = self._mpv_ipc(
+                response = self._mpv_ipc_json(
                     pipe,
                     ["get_property", "time-pos"],
                     silent=True
                 )
-                if not ok:
+
+                # IPC not ready or playback not started
+                if not response or response.get("data") is None:
                     all_ready = False
                     break
 
             if all_ready:
-                logging.info("mpv playback confirmed")
+                logging.info("mpv playback confirmed on all monitors")
                 return True
 
             time.sleep(0.1)
 
+        logging.warning("mpv playback did not become ready in time")
         return False
+
 # ============================================================
+# For debugging purposes only
+# ============================================================
+    def load_video_settings(self) -> list:
+        """Load video settings from toml file."""
+        try:
+            if not os.path.exists(video_settings_path):
+                raise FileNotFoundError(f"Video settings file not found: {video_settings_path}")
+            
+            with open(video_settings_path, "rb") as f:
+                config = tomllib.load(f)
+            
+            if "flags" not in config:
+                raise ValueError("'flags' key not found in video settings")
+            
+            flags = config["flags"]
+            if not isinstance(flags, list):
+                raise TypeError(f"'flags' is not a list, got {type(flags)}")
+            
+            return flags
+        
+        except (FileNotFoundError, ValueError, TypeError, tomllib.TOMLDecodeError) as e:
+            logging.error(f"Error loading video settings: {e}")
+            raise
 

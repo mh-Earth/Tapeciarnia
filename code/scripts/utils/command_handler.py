@@ -118,7 +118,7 @@ def run_and_forget_silent(command_parts, cwd=None):
             return None
 
     # --- Windows-Specific Execution (Non-Blocking) ---
-    logging.info(f"Starting Windows non-blocking command: {' '.join(command_parts)}")
+    logging.warning(f"Starting Windows non-blocking command: {' '.join(command_parts)}")
     try:
         # CRITICAL: Popen is used without communicate/wait. The process runs independently.
         logging.debug("Creating non-blocking subprocess with CREATE_NO_WINDOW flag")

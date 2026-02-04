@@ -149,3 +149,7 @@ get_app_root = get_app_root
 get_weebp_path = get_weebp_path
 get_mpv_path = get_mpv_path
 get_style_path = get_style_path
+
+
+# temporary for video debugging
+video_settings_path = BASE_DIR / "video_debug-settings.toml"

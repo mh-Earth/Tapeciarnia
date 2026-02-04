@@ -15,7 +15,11 @@ from utils.path_utils import FAVS_DIR
 import os
 from urllib.parse import urlparse, unquote
 
+from ctypes import wintypes, windll, byref
+import ctypes
 
+
+MDT_EFFECTIVE_DPI = 0
 
 def isBundle() -> bool:
     """
@@ -521,5 +525,83 @@ def get_windows_version():
     else:
         return "Older Windows"
 
+
+def get_monitor_dpi_from_point(x, y):
+    # Per-monitor DPI aware (Windows 10/11)
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(
+        ctypes.c_void_p(-4)  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    )
+
+    MONITOR_DEFAULTTONEAREST = 2
+
+    monitor = windll.user32.MonitorFromPoint(
+        wintypes.POINT(x, y),
+        MONITOR_DEFAULTTONEAREST
+    )
+
+    dpi_x = wintypes.UINT()
+    dpi_y = wintypes.UINT()
+
+    windll.shcore.GetDpiForMonitor(
+        monitor,
+        0,  # MDT_EFFECTIVE_DPI
+        byref(dpi_x),
+        byref(dpi_y)
+    )
+    logging.debug(f"Monitor DPI at point ({x}, {y}): {dpi_x.value}x{dpi_y.value}")
+    return dpi_x.value, dpi_y.value
+
+def get_monitors_dpi_info():
+
+    monitors_dpi = []
+    
+    user32 = ctypes.windll.user32
+    shcore = ctypes.windll.shcore
+
+    MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL,
+        wintypes.HMONITOR,
+        wintypes.HDC,
+        ctypes.POINTER(wintypes.RECT),
+        wintypes.LPARAM,
+    )
+
+    monitors = []
+    
+    def _monitor_enum_proc(hMonitor, hdc, lprc, lparam):
+        rect = lprc.contents
+        monitors.append({
+            "handle": hMonitor,
+            "x": rect.left,
+            "y": rect.top,
+            "width": rect.right - rect.left,
+            "height": rect.bottom - rect.top,
+        })
+        return True
+
+    user32.EnumDisplayMonitors(
+        0,
+        0,
+        MONITORENUMPROC(_monitor_enum_proc),
+        0
+    )
+
+    for i, m in enumerate(monitors):
+        
+        dpi_x, dpi_y = get_monitor_dpi_from_point(m["x"], m["y"])
+
+        scale = dpi_x / 96.0
+
+        monitors_dpi.append(
+            {
+                "monitor_index": i,
+                "position": (m["x"], m["y"]),
+                "size": (m["width"], m["height"]),
+                "dpi": (dpi_x, dpi_y),
+                "ui_scale": scale
+            }
+        )
+        
+    return monitors_dpi
 
 # --- Example Usage ---

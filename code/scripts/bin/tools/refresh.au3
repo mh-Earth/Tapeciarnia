@@ -63,7 +63,7 @@ _RemoveWindowBorders($hAppWnd)
 ; Step 4: Position the hAppWnd to cover the entire WorkerW area (entire desktop).
 ; The WorkerW typically matches the desktop dimension, so we size and position
 ; our window to match it exactly.
-_LocalizeApp($hAppWnd, $hWorkerW)
+;~ _LocalizeApp($hAppWnd, $hWorkerW)
 
 ; Step 5: Trigger a shell refresh. This simulates right-click "Refresh" on the
 ; desktop, ensuring that icons and other elements refresh their Z-order and

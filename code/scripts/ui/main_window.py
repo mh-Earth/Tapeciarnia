@@ -45,7 +45,7 @@ from core.login_handler import LoginWorker
 from core.shuffler import Shuffler
 # Import utilities
 from utils.path_utils import SUPER_WALLPAPER_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import get_current_desktop_wallpaper, is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url,isBundle
+from utils.system_utils import is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url,isBundle
 from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url,extract_file_id_from_url
 from utils.file_utils import cleanup_temp_marker
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
@@ -73,41 +73,35 @@ class TapeciarniaApp(QMainWindow):
         self.scheduler = UnifiedWallpaperScheduler()
         self.language_controller = get_language_controller()
         self.scheduler.set_change_callback(self._apply_wallpaper_from_scheduler)
+        # Load configuration
+        logging.debug("Loading configuration")
         self.config = get_config()
-
+        # Initial language setup
+        logging.debug("Setting up initial language")
         self._set_lang()
         # connect to the language controller signals
+        logging.debug("Connecting language change signal")
         self.language_controller.language_changed.connect(self._update_lang)
         self.ui.uploadArea.mousePressEvent = self.upload_area_mousePressEvent
-
         # remove focuse from email input textEdit
         self.ui.emailInput.clearFocus()
         self.ui.card.setFocus()
-        # Enhanced wallpaper state
-        self.current_wallpaper_type = None
-        self.auto_pause_process = None
-        self.last_wallpaper_path = None
-        self.current_shuffle_mode = None
+        # loing setup
         self.user_name:str|None = None
-        # scheduler
+        # scheduler setup
         self.scheduler.status_callback = self._set_status
-        # 
-
         # Enhanced drag & drop
         self.drag_drop_widget = EnhancedDragDropWidget(self)
-
-        # State
-        # self.previous_wallpaper = get_current_desktop_wallpaper()
-        self.is_minimized_to_tray = False
-
         # Setup
+        logging.debug("Setting up UI and application state")
         self._setup_ui()
         self._setup_tray()
         self._load_settings()
         self._setLogInState()
-        
+        # Custom message box
+        logging.debug("Initializing custom message box")
         self.customMessageBox = CustomMessageBox(ButtonCollection(language_data=self.language_controller.lang))
-        
+        # ========================================================================
 
         logging.info("TapeciarniaApp initialization completed successfully")
 
@@ -260,9 +254,6 @@ class TapeciarniaApp(QMainWindow):
         self._stop_scheduler()
         self.set_buttons(True)
         # Reset enhanced state
-        self.current_wallpaper_type = None
-        self.last_wallpaper_path = None
-        self.current_shuffle_mode = None
 
         # reset scheduler state
         if self.config.get_scheduler_enabled():
@@ -288,11 +279,6 @@ class TapeciarniaApp(QMainWindow):
         # Use the enhanced drag drop widget to restore original wallpaper
         if hasattr(self, 'drag_drop_widget'):
             self.drag_drop_widget.reset_selection()
-        # elif self.previous_wallpaper:
-            # self.controller.start_image(self.previous_wallpaper)
-            # self._set_status(self.language_controller.get("status.genaral.Failed_to_restore_original_wallpaper")) #
-        # else:
-            # self._set_status(self.language_controller.get("status.genaral.reset_complete"))
         
         # Clear URL input
         if hasattr(self.ui, 'urlInput'):
@@ -320,12 +306,6 @@ class TapeciarniaApp(QMainWindow):
         # success_dialog.exec()
         logging.info("Reset success confirmation shown")
 
-    def cleanup(self):
-        """Enhanced cleanup on app close"""
-        logging.info("Performing application cleanup")
-        self.controller.stop()
-        self.stop_auto_pause_process()
-        logging.info("Application cleanup completed")
 
     # # Rest of your existing methods remain the same...
     # def changeEvent(self, event):
@@ -347,42 +327,18 @@ class TapeciarniaApp(QMainWindow):
             logging.debug("Window hidden to tray")
             event.ignore()
         else:
+            logging.info("Close event triggered, performing full shutdown")
             self._perform_shutdown(event)
 
     def _perform_shutdown(self, event):
         """Perform shutdown with coordinated progress updates"""
         try:
-            logging.info("Performing coordinated shutdown sequence")
+            logging.info("Performing shutdown sequence")
             
-            # Step 1: Stop wallpaper processes (25%)
-            # self.shutdown_dialog.update_progress(25, "Stopping wallpaper processes...")
             self.controller.stop()
-            QApplication.processEvents()
             
-            # Step 2: Stop scheduler (50%)
-            # self.shutdown_dialog.update_progress(50, "Stopping scheduler...")
             self._stop_scheduler()
-            QApplication.processEvents()
             
-            # Step 3: Cleanup resources (75%)
-            # self.shutdown_dialog.update_progress(75, "Cleaning up resources...")
-            try:
-                if hasattr(self, 'stop_auto_pause_process'):
-                    self.stop_auto_pause_process()
-            except Exception as e:
-                logging.warning(f"Error stopping auto-pause process: {e}")
-            QApplication.processEvents()
-            
-            # Step 4: Save settings (90%)
-            # self.shutdown_dialog.update_progress(90, "Saving settings...")
-            # Add any final settings save operations here
-            QApplication.processEvents()
-            
-            # Step 5: Complete (100%)
-            # self.shutdown_dialog.update_progress(100, "Shutdown complete!")
-            QApplication.processEvents()
-            
-            # Wait a moment to show completion, then finalize
             QTimer.singleShot(100, lambda: self._finalize_shutdown(event))
             
         except Exception as e:
@@ -397,10 +353,6 @@ class TapeciarniaApp(QMainWindow):
             if hasattr(self, 'tray'):
                 self.tray.hide()
             
-            # Close shutdown dialog
-            if hasattr(self, 'shutdown_dialog'):
-                self.shutdown_dialog.close()
-            
             # Don't try to use event if it's already deleted
             try:
                 if event and hasattr(event, 'accept'):
@@ -411,38 +363,14 @@ class TapeciarniaApp(QMainWindow):
             # Quit application
             QApplication.quit()
             
-            logging.info("Application quit initiated successfully")
-            
         except Exception as e:
             logging.error(f"Error finalizing shutdown: {e}", exc_info=True)
             # Force quit if graceful shutdown fails
             QApplication.quit()
 
-    def stop_auto_pause_process(self):
-        """Stop any auto-pause background processes"""
-        logging.info("Stopping auto-pause processes")
-        try:
-            if hasattr(self, 'auto_pause_process') and self.auto_pause_process:
-                try:
-                    self.auto_pause_process.terminate()
-                    self.auto_pause_process.wait(2000)  # Wait up to 2 seconds
-                    logging.debug("Auto-pause process terminated successfully")
-                except Exception as e:
-                    logging.warning(f"Could not terminate auto-pause process gracefully: {e}")
-                    try:
-                        self.auto_pause_process.kill()
-                        logging.debug("Auto-pause process killed")
-                    except Exception as kill_error:
-                        logging.error(f"Could not kill auto-pause process: {kill_error}")
-                finally:
-                    self.auto_pause_process = None
-        except Exception as e:
-            logging.warning(f"Error stopping auto-pause process: {e}")
-
     def hide_to_tray(self):
         logging.info("Hiding window to system tray")
         self.hide()
-        self.is_minimized_to_tray = True
         if hasattr(self, 'tray'):
             self.tray.showMessage(
                 self.language_controller.get("dialog.info.icon_tray_title"),
@@ -459,7 +387,6 @@ class TapeciarniaApp(QMainWindow):
         self.activateWindow()
         if self.isMinimized():
             self.showNormal()
-        self.is_minimized_to_tray = False
         logging.debug("Window restored from tray")
 
     def _open_tapeciarnia_website(self):
@@ -1139,7 +1066,7 @@ class TapeciarniaApp(QMainWindow):
         logging.debug(f"Toggleing buttons: {enabled}")
         self.ui.randomButton.setDisabled(not enabled)
         self.ui.randomAnimButton.setDisabled(not enabled)
-        self.ui.browseButton.setDisabled(not enabled)
+        # self.ui.browseButton.setDisabled(not enabled)
         self.ui.loadUrlButton.setDisabled(not enabled)
         self.ui.logInBnt.setDisabled(not enabled)
         self.ui.resetButton.setDisabled(not enabled)
@@ -1205,15 +1132,25 @@ class TapeciarniaApp(QMainWindow):
                 self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
                     self.language_controller.get("dialog.warning.unsupported_url_message")) #
             self.set_buttons(True)
-            return
+            
     
         else:
+            logging.warning(f"Unsupported input type: {text}")
+            media_type = get_media_type(validated)
+            logging.debug(f"Detected media type for unsupported input: {media_type}")
+            if media_type == "image":
+                self._handle_remote_image(validated)
+            elif media_type == "video":
+                self._handle_remote_video(validated)
+            else:
+                self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
+                    self.language_controller.get("dialog.warning.unsupported_url_message")) #
 
             # -------- Fallback --------
-            logging.warning(f"Unsupported input type: {text}")
-            self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
-                    self.language_controller.get("dialog.warning.unsupported_url_message")) #
-            self.set_buttons(True)
+            # logging.warning(f"Unsupported input type: {text}")
+            # self.customMessageBox.warning(self, self.language_controller.get("dialog.warning.unsupported_url_title"),
+            #         self.language_controller.get("dialog.warning.unsupported_url_message")) #
+            # self.set_buttons(True)
 
 
     def _handle_local_file(self, file_path: Path):
@@ -1269,7 +1206,7 @@ class TapeciarniaApp(QMainWindow):
             
             self.image_download_thread.progress.connect(
                 lambda percent, status: (
-                    self._set_status(f"Downloading...{status}")
+                    self._set_status(f"Downloading...{percent}% - {status}")
                 )
             )
             self.image_download_thread.error.connect(self._on_download_error)
@@ -1339,7 +1276,7 @@ class TapeciarniaApp(QMainWindow):
             self.direct_download_thread = VideoDownloadThread(url, str(download_path))
             self.direct_download_thread.progress.connect(
                 lambda percent, status: (
-                    self._set_status(f"Downloading...{status}")
+                    self._set_status(f"Downloading...{percent}% - {status}")
                 )
             )
             self.direct_download_thread.error.connect(self._on_download_error)
@@ -2094,7 +2031,7 @@ class TapeciarniaApp(QMainWindow):
                 url = self.config.get_loging_url()
                 
                 payload = LoginPayload(username=email,password=password,language=self.config.get_language()).payload()
-                logging.debug(payload)
+                logging.debug(f"Login payload: {payload}")
                 login = LoginWorker(url=url, payload=payload,method="GET")
                 login.success.connect(self._on_login_success)
                 login.failed.connect(lambda e: self._on_login_failed(data=e,login_worker=login))
