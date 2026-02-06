@@ -598,10 +598,19 @@ def get_monitors_dpi_info():
                 "position": (m["x"], m["y"]),
                 "size": (m["width"], m["height"]),
                 "dpi": (dpi_x, dpi_y),
-                "ui_scale": scale
+                "ui_scale": scale,
+                "primary": (i == 0)
+
             }
         )
         
     return monitors_dpi
 
+def calculate_dimension_with_scaling(dimension:tuple, ui_scale: float) -> tuple:
+    width, height = dimension
+    # if width <=0:
+    scaled_width = int(width * (1 - ((1 - ui_scale) * -1)))
+    scaled_height = int(height * (1 - ((1 - ui_scale) * -1)))
+
+    return (scaled_width, scaled_height)
 # --- Example Usage ---

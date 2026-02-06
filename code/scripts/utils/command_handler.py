@@ -125,7 +125,9 @@ def run_and_forget_silent(command_parts, cwd=None):
         process = subprocess.Popen(
             command_parts,
             creationflags=CREATE_NO_WINDOW,
-            cwd=cwd
+            cwd=cwd,
+            stdout=None,
+            stderr=None
         )
         logging.debug(f"Background process started successfully - PID: {process.pid}")
         logging.debug(f"Process object created: {process}")

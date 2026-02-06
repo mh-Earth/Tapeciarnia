@@ -24,6 +24,7 @@ from utils.system_utils import (
     set_static_desktop_wallpaper,
     get_windows_version,
     get_current_desktop_wallpaper,
+    calculate_dimension_with_scaling
 )
 from utils.path_utils import (
     get_weebp_path,
@@ -266,7 +267,7 @@ class WallpaperController(QThread):
                 logging.warning("mpv did not become ready in time")
             
             # ✅ NOW SAFE
-            self.run_optional_tools()
+            # self.run_optional_tools()
 
 
 
@@ -276,23 +277,29 @@ class WallpaperController(QThread):
             monitor_info = get_monitors_dpi_info()  # contains ui_scale
             assert len(view_ids) >= len(monitors)
 
-            for idx, (monitor, view_id) in enumerate(zip(monitors, view_ids)):
-                scale = monitor_info[idx]["ui_scale"]
+            for idx, (monitor, view_id) in enumerate(zip(monitor_info, view_ids)):
 
+                position:tuple = monitor.get("position", (0,0))
+                size:tuple = monitor.get("size", (1920,1080))
+                scale = monitor.get("ui_scale", 1.0)
+                primary = monitor.get("primary", False)
+                logging.info(f"Monitor {idx} - Position: {position}, Size: {size}, UI Scale: {scale}")
                 # logical → physical
-                phys_x = int(monitor.x * scale)
-                phys_y = int(monitor.y * scale)
-                phys_w = int(monitor.width * scale)
-                phys_h = int(monitor.height * scale)
+                # phys_x = 0 if primary else calculate_dimension_with_scaling(monitor_info[idx-1]["size"], monitor_info[idx-1]["ui_scale"])[0]
+                phys_x = size[0]
+                # phys_x = 0 if idx == 0 else 1920
+                # phys_y = int(monitor.y)
+                phys_w = int(size[0] * (1 - ((1 - scale) * -1)))
+                phys_h = int(size[1] * (1 - ((1 - scale) * -1)))
 
                 move_cmd = [
                     str(self.weebp_path),
                     "mv",
                     "-a", f"0x{view_id}",
                     "-x", str(phys_x),
-                    "-y", str(phys_y),
-                    "--width", str(phys_w),
-                    "--height", str(phys_h),
+                    # "-y", str(phys_y),
+                    f"--width {str(size[0])}" if not primary else "",
+                    # "--height", str(phys_h),
                 ]
 
                 run_and_forget_silent(move_cmd)
@@ -302,6 +309,7 @@ class WallpaperController(QThread):
 
         except Exception as e:
             logging.error("Failed to start video wallpaper", exc_info=True)
+            self.stop()
 
     # ---------------------------------------------------------
     #  LINUX VIDEO START
