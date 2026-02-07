@@ -1456,11 +1456,16 @@ class TapeciarniaApp(QMainWindow):
         try:
             self.set_buttons(False)
             logging.info(f"Applying video wallpaper: {video_path}")
-            self.controller.start_video(video_path)
-            self.config.set_last_video(video_path)
-            self._set_status(self.language_controller.get("status.genaral.playing_video").format(Path(video_path).name)) #
-            self._update_url_input(video_path)
-            logging.info(f"Video wallpaper applied successfully: {Path(video_path).name}")
+            success = self.controller.start_video(video_path)
+            print(f"Controller start_video returned: {success}")
+            if success:
+                self.config.set_last_video(video_path)
+                self._set_status(self.language_controller.get("status.genaral.playing_video").format(Path(video_path).name)) #
+                self._update_url_input(video_path)
+                logging.info(f"Video wallpaper applied successfully: {Path(video_path).name}")
+            else:
+                self._set_status(self.language_controller.get("status.genaral.failed_to_change_wallpaper")) #
+
             self.set_buttons(True)
         except Exception as e:
             self.set_buttons(True)

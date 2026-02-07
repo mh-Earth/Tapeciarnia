@@ -434,7 +434,7 @@ def get_primary_screen_dimensions() -> tuple[int, int]:
             size = screen.size()
             width = size.width()
             height = size.height()
-            logging.info(f"Primary screen dimensions retrieved: {width}x{height}")
+            logging.debug(f"Primary screen dimensions retrieved: {width}x{height}")
             return width, height
         
         logging.warning("Primary screen object not found. Returning fallback dimensions.")
@@ -551,7 +551,7 @@ def get_monitor_dpi_from_point(x, y):
     logging.debug(f"Monitor DPI at point ({x}, {y}): {dpi_x.value}x{dpi_y.value}")
     return dpi_x.value, dpi_y.value
 
-def get_monitors_dpi_info():
+def get_monitors_info():
 
     monitors_dpi = []
     

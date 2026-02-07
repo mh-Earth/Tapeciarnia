@@ -256,7 +256,9 @@ class EnhancedDragDropWidget(QWidget):
                 # Apply the wallpaper
                 if self.is_video_file(self.destination_path):
                     logging.info(f"Setting video wallpaper: {self.destination_path}")
-                    self.parent_app.controller.start_video(self.destination_path)
+                    success = self.parent_app.controller.start_video(self.destination_path)
+                    if not success:
+                        logging.warning("Failed to set video wallpaper")
                 else:
                     logging.info(f"Setting image wallpaper: {self.destination_path}")
                     self.parent_app.controller.start_image(self.destination_path)
@@ -266,7 +268,11 @@ class EnhancedDragDropWidget(QWidget):
                 
                 # Update status
                 if hasattr(self.parent_app, '_set_status'):
-                    self.parent_app._set_status(f"Wallpaper set: {os.path.basename(self.destination_path)}")
+                    if success:
+                        self.parent_app._set_status(self.parent_app.language_controller.get("status.genaral.playing_video").format(Path(self.destination_path).name)) # #
+                    else:
+                        self.parent_app._set_status(self.parent_app.language_controller.get("status.genaral.failed_to_change_wallpaper")) #
+
                 
                 # Store in config
                 self.parent_app.config.set_last_video(self.destination_path)

@@ -172,7 +172,8 @@
                 "empty_frvt_collection":"Can't find any favorite wallpapers. Please add some to favorites first.",
                 
                 "app_title":"Tapeciarnia - Live Wallpaper Manager",
-                "changing_wallpaper":"Changing wallpaper..."
+                "changing_wallpaper":"Changing wallpaper...",
+                "failed_to_change_wallpaper":"Failed to change wallpaper"
                 
 
 

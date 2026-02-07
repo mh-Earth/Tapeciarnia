@@ -153,3 +153,4 @@ get_style_path = get_style_path
 
 # temporary for video debugging
 video_settings_path = BASE_DIR / "video_debug-settings.toml"
+playback_setting = BASE_DIR / "playback_settings.toml"

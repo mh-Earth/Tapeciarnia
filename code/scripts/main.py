@@ -44,7 +44,7 @@ except Exception as e:
 # config = Config()
 # token, user_id, logged = config.load_session()
 
-# if logged and token:
+# if logged and token: 
 #     # try to validate the token
 #     if api_validate_token(token):
 #         open_main_window()

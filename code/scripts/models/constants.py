@@ -15,6 +15,10 @@ class Sources(Enum):
     FAVOURITE = "favourite"
     COLLECTION = "collection"
 
+class PlayBackMode(Enum):
+    TILED = "tiled"
+    SINGLE = "single"
+
 class URIActions(Enum):
     ID = "id"
     MP4_ID = "mp4_id"
