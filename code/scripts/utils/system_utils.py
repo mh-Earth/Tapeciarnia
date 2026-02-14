@@ -548,7 +548,7 @@ def get_monitor_dpi_from_point(x, y):
         byref(dpi_x),
         byref(dpi_y)
     )
-    logging.debug(f"Monitor DPI at point ({x}, {y}): {dpi_x.value}x{dpi_y.value}")
+    # logging.debug(f"Monitor DPI at point ({x}, {y}): {dpi_x.value}x{dpi_y.value}")
     return dpi_x.value, dpi_y.value
 
 def get_monitors_info():
@@ -613,4 +613,7 @@ def calculate_dimension_with_scaling(dimension:tuple, ui_scale: float) -> tuple:
     scaled_height = int(height * (1 - ((1 - ui_scale) * -1)))
 
     return (scaled_width, scaled_height)
+
+
+
 # --- Example Usage ---

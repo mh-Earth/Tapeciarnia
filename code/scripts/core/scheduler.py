@@ -78,7 +78,6 @@ class UnifiedWallpaperScheduler:
     # -------------------------------------------------------------------
     def start(self, source: str, range_type:str, interval_minutes: int):
         logging.info(f"Starting UnifiedWallpaperScheduler with source={self.source}")
-
         self.range_type = range_type
         if interval_minutes <= 0:
             interval_minutes = 1
@@ -92,8 +91,11 @@ class UnifiedWallpaperScheduler:
         self.stop_event.clear()
         self.is_running = True
 
+        if self.source == str(SAVES_DIR):
+            pass
+
         # online mode uses its own worker
-        if self.source == str(FAVS_DIR):
+        elif self.source == str(FAVS_DIR):
             if not self.api_url:
                 raise RuntimeError("API URL must be set before starting online mode")
 
@@ -104,7 +106,7 @@ class UnifiedWallpaperScheduler:
             self.online_worker.setStatus.connect(lambda e: self.status_callback(e))
             self.online_worker.start()
 
-        if self.source == str(SUPER_WALLPAPER_DIR):
+        elif self.source == str(SUPER_WALLPAPER_DIR):
             if not self.api_url:
                 raise RuntimeError("API URL must be set before starting online mode")
 
@@ -117,6 +119,7 @@ class UnifiedWallpaperScheduler:
 
         # main loop (handles timing)
         self.scheduler_thread = Thread(target=self._main_loop, daemon=True)
+        logging.debug("Starting UnifiedWallpaperScheduler mainloop thread")
         self.scheduler_thread.start()
 
     def stop(self):
@@ -170,8 +173,9 @@ class UnifiedWallpaperScheduler:
     # OFFLINE WORKFLOW (unchanged from your original)
     # -------------------------------------------------------------------
     def _run_offline_cycle(self):
-        logging.debug("offline scheduler cycle ran")
-        wallpaper:Path = self._get_random_wallpaper()
+        logging.debug("Offline scheduler cycle ran")
+        wallpaper = self._get_random_wallpaper()
+        logging.debug(f"Random wallpaper for scheduler: {wallpaper}")
 
         if wallpaper and wallpaper != self.last_wallpaper:
             self.last_wallpaper = wallpaper
@@ -227,6 +231,7 @@ class UnifiedWallpaperScheduler:
     @Slot(bytes)
     def _on_online_image_ready(self, img_data:dict): # {"url": url, "data": img_bytes}
         """Offline callback receives Path, online receives bytes."""
+        logging.info("Offline callback receives Path, online receives bytes.")
         if self.change_callback:
             self.change_callback(image_data=img_data)
 
@@ -258,6 +263,7 @@ class OnlineWallpaperScheduler(QThread):
         self.request_flag = False        # main app requests next image
         self.traslator = get_language_controller()
         self.config = get_config()
+        logging.debug("Initiating OnlineWallpaperScheduler Thread")
 
     # ---------------------------------------------------------
     #               HELPER METHODS
@@ -319,7 +325,7 @@ class OnlineWallpaperScheduler(QThread):
 
     def _download_next_image(self):
         """Download next image from URL list and add to queue."""
-        logging.info("Downloading image to add in schedueler qeueu")
+        logging.info("Downloading wallpaper to add in schedueler qeueu")
         if not self.url_list:
             return
 

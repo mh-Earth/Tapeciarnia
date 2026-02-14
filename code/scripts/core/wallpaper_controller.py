@@ -13,40 +13,40 @@ import time
 import json
 import tomllib
 import win32gui # type: ignore
+import subprocess
+from pathlib import Path
 
 from screeninfo import get_monitors
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import QThread
 
 from utils.system_utils import (
-    get_monitor_dpi_from_point,
     get_monitors_info,
     which,
     set_static_desktop_wallpaper,
     get_windows_version,
     get_current_desktop_wallpaper,
-    calculate_dimension_with_scaling
 )
 from utils.path_utils import (
     get_weebp_path,
     get_mpv_path,
-    get_tools_path,
 )
 from utils.command_handler import run_and_forget_silent
 from ui.widgets import CustomMessageBox,ButtonCollection
 from utils.singletons import get_config,get_language_controller
-from utils.path_utils import video_settings_path,playback_setting
+from utils.path_utils import video_settings_path,playback_setting,SAVES_DIR
 from models.constants import PlayBackMode
 from core.refresh import attach_window_to_desktop
+from core.maker import WallpaperMaker
 class WallpaperController(QThread):
     def __init__(self):
+        logging.debug("initiating wallpaper controller class")
         self.current_is_video = False
 
         # IPC pipe names (one per monitor)
         self._mpv_ipc_pipes = []
 
         # Cached paths
-        self.tools_path = get_tools_path()
         self.weebp_path = get_weebp_path()
         self.mpv_path = get_mpv_path()
         self.mpv_cwd = self.mpv_path.parents[0]
@@ -68,6 +68,11 @@ class WallpaperController(QThread):
         self.auto_rerty = False
         # setup fallback
         self.setup_fallback_settings()
+        # status update
+        self.status_callback = None
+        self.video_success_callback = None
+        self.btn_update_callback = None
+        self.initial_monitor_count = self._detect_monitors()
 
 
         if not self._check_weebp_and_mpv():
@@ -124,15 +129,19 @@ class WallpaperController(QThread):
     # ---------------------------------------------------------
     def _run_refresh(self, fallback_func=None,**kwargs) -> bool:
         time.sleep(0.5)  # wait a moment to ensure weebp has registered the mpv wallpaper
+        video_path=kwargs.get("video_path")
+        original_path=kwargs.get("original_path",video_path)
+
         view_id = self.get_view_id()
         logging.info(f"View IDs obtained: {view_id}")
+
         for ids in view_id:
             logging.info(f"Processing View ID: {ids}")
-            if ids == "0" and ids not in self.ids_list: # did not get valid view id, try again until limit is reached
+            if ids == "0" : # and ids not in self.ids_list did not get valid view id, try again until limit is reached
                 if self.refresh_count < self.refresh_limit:
                     logging.warning("View ID not found, retrying refresh...")
                     self.refresh_count += 1
-                    return self._run_refresh()
+                    return self._run_refresh(fallback_func=None,**kwargs)
                 elif self.refresh_count >= self.refresh_limit:
                     logging.error("Max refresh attempts reached, aborting refresh.")
                     self.customMessageBox.critical(
@@ -142,18 +151,20 @@ class WallpaperController(QThread):
                         "Failed to set animated wallpaper. Aborting operation.\nTry later", # have to add in translations later
                     )
                     self.force_stop() # stop all wallpaper processes for windows. This will work for now as we are only using this for windows not mac or linux
-                    return False
+                    self.video_success_callback(video_path=original_path,success=False)
+
             else: # got a valid view id, try to attach to desktop
 
                 hwnd = int(ids, 16)
-                logging.warning(f"Running refresh for 0x{hwnd}")
+                logging.warning(f"Running refresh for 0x{ids}")
                 success = attach_window_to_desktop(hwnd)
 
                 if success:
                     self.auto_rerty = False
                     self.refresh_count = 0  # reset count on success
                     self.ids_list.append(ids)
-                    return success
+                    self.current_is_video = success
+                    self.video_success_callback(video_path=original_path,success=success)
                 else:
                     if self.retry_fallback:
                         logging.warning(f"Failed to attach View ID {ids} to desktop, asking for retry.")
@@ -171,9 +182,13 @@ class WallpaperController(QThread):
                             self.force_stop() # stop all wallpaper processes for windows. This will work for now as we are only using this for windows not mac or linux
                             if self.retry_fallback_attempts < self.max_retry_attempts:
                                 self.retry_fallback_attempts += 1
-                                fallback_func(video_path=kwargs.get("video_path")) if fallback_func else None # try again with fallback if provided
+                                fallback_func(video_path,**kwargs) if fallback_func else None # try again with fallback if provided
+                            else:
+                                self.retry_fallback_attempts = 0
+                                self.auto_rerty = False
                         else:
                             self.force_stop() # stop all wallpaper processes for windows. This will work for now as we are only using this for windows not mac or linux
+                            self.video_success_callback(success=False)
 
 
                     else:
@@ -185,14 +200,12 @@ class WallpaperController(QThread):
                             "Failed to set animated wallpaper. Aborting operation.\nTry again", # have to add in translations later
                         )
                         self.force_stop() # stop all wallpaper processes for windows. This will work for now as we are only using this for windows not mac or linux
+                        self.video_success_callback(success=False)
                 
-        return False
 
     def run_optional_tools(self,fallback_func=None,**kwargs) -> bool:
         if get_windows_version() == "Windows11":
             return self._run_refresh(fallback_func,**kwargs)
-        
-        return True
 
     # ---------------------------------------------------------
     #  STOP
@@ -219,9 +232,10 @@ class WallpaperController(QThread):
         self._mpv_ipc_pipes.clear()
 
     def _stop_windows(self):
-        kill_list = ["mpv.exe", "wp.exe", "autopause.exe", "refresh.exe"]
+        kill_list = ["mpv.exe", "wp.exe", "autopause.exe","ffmpeg.exe"]
 
         for proc in kill_list:
+            logging.debug(f"Killing process {proc}")
             subprocess.run(
                 ["taskkill", "/F", "/IM", proc, "/T"],
                 stdout=subprocess.DEVNULL,
@@ -238,13 +252,20 @@ class WallpaperController(QThread):
     #  START VIDEO
     # ---------------------------------------------------------
     def start_video(self, video_path: str):
+        if not isinstance(video_path,str):
+            raise ValueError(f"video path have to be class str not {type(video_path)}")
+
+        logging.debug("start_video function triggerd...")
+        self.setup_wallpaper_mode()
         if platform.system() == "Windows":
             if self.current_is_video:
+                logging.info("Replacing current video")
                 self._play_next_video(video_path)
                 return
-
-            self.current_is_video = self._start_video_windows(video_path)
-            return self.current_is_video
+            
+            self._start_video_windows(video_path)
+            return
+            
 
         if sys.platform.startswith("linux"):
             self._start_video_linux(video_path)
@@ -272,28 +293,57 @@ class WallpaperController(QThread):
             return False
 
         except Exception as e:
-            logging.error("IPC failed (%s): %s", pipe_name, e)
+            logging.error("IPC failed (%s): %s", pipe_name, e,exc_info=True)
             return False
 
     # ---------------------------------------------------------
     #  PLAY NEXT VIDEO (ALL MONITORS)
     # ---------------------------------------------------------
     def _play_next_video(self, video_path: str):
+        logging.debug("_play_next_video function triggerd...")
+        self.setup_wallpaper_mode()
         if not self._mpv_ipc_pipes:
             logging.error("No active mpv IPC pipes")
+            return
+        
+        if self.mode and self.mode == PlayBackMode.SINGLE:
+            # creating panoramic wallpaper from original wallpaper for next wallpaper..
+            monitors = len(get_monitors())
+            target_height = min(m.height for m in get_monitors())
+            logging.info(f"Creating panoramic wallpaper for {monitors} monitor from {video_path}")
+            output_path = str(SAVES_DIR / "wallpaper.mp4")
+            def update(new_path):
+                try:
+
+                    for pipe in self._mpv_ipc_pipes:
+                        self._mpv_ipc(pipe, ["loadfile", str(new_path), "replace"])
+                    self.video_success_callback(video_path=video_path,success=True)
+                except Exception as e:
+                    logging.error(e,exc_info=True)
+                    self.video_success_callback(success=False)
+
+            self.maker_thread = WallpaperMaker(video_path,output_path,monitors,target_height)
+            self.maker_thread.done.connect(lambda new_path: update(new_path) )
+            self.maker_thread.error.connect(lambda e: self.status_callback(e))
+            self.maker_thread.progress.connect(lambda e: self.status_callback(e))
+            self.maker_thread.start()
             return
 
         for pipe in self._mpv_ipc_pipes:
             self._mpv_ipc(pipe, ["loadfile", video_path, "replace"])
 
+
+        self.video_success_callback(video_path=video_path,success=True)
         logging.info("Wallpaper video switched on all monitors")
+    
 
     # ---------------------------------------------------------
     #  WINDOWS VIDEO START
     # ---------------------------------------------------------
     def _start_video_windows(self, video_path: str):
+        logging.debug("Starting animated wallpaper for windows...")
+
         try:
-            self.setup_wallpaper_mode()
             self._mpv_ipc_pipes.clear()
 
             if self.mode: # there is more then 1 monitor, and mode is set to either "tiled" or "single"
@@ -309,135 +359,116 @@ class WallpaperController(QThread):
                     
                         if reply == QMessageBox.YesRole:
                             logging.info("User chose to proceed with animated wallpaper setup despite monitor alignment issues.")
-                            return self._start_multi_tiled_video_windows(video_path)
+                            self._start_multi_tiled_video_windows(video_path)
                             
                         else:
                             logging.info("User chose to abort animated wallpaper setup due to monitor alignment issues.")
-                            return False
+                            
                     else:
                         logging.info("Monitors properly aligned, proceeding with tiled animated wallpaper setup.")
-                        return self._start_multi_tiled_video_windows(video_path)
+                        self._start_multi_tiled_video_windows(video_path)
                     
 
                 
                 elif self.mode == PlayBackMode.SINGLE:
-                    return self._start_multi_single_video_windows(video_path)
+                    monitors = len(get_monitors())
+                    target_height = min(m.height for m in get_monitors())
+                    logging.info(f"Creating panoramic wallpaper for {monitors} monitor from {video_path}")
+                    output_path = str(SAVES_DIR / "wallpaper.mp4")
+
+                    self.maker_thread = WallpaperMaker(video_path,output_path,monitors,target_height)
+                    self.maker_thread.done.connect(lambda new_path: self._start_multi_single_video_windows(new_path,original_path=video_path))
+                    self.maker_thread.error.connect(lambda e: self.status_callback(e))
+                    self.maker_thread.progress.connect(lambda e: self.status_callback(e))
+                    self.maker_thread.start()
 
                 else:
                     logging.warning(f"Unknown wallpaper mode: {self.mode}. Defaulting to 'tiled'.")
-                    return self._start_multi_tiled_video_windows(video_path)
+                    self._start_multi_single_video_windows(video_path)
 
             else: # only 1 monitor detected, defaulting to single mode
-                return self._start_single_monitor_video_window(video_path)
-
-
-
+                # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                self._start_single_monitor_video_window(video_path)
 
         except Exception as e:
             logging.error("Failed to start animated wallpaper", exc_info=True)
             self.stop()
-            return False
+            self.video_success_callback(success=False)
     
-    def _start_single_monitor_video_window(self, video_path: str) -> bool:
+    def _start_single_monitor_video_window(self, video_path: Path) -> bool:
 
-        logging.warning("Starting animated wallpaper in single monitor mode")
+        try:
 
-        cmd = self._build_mpv_cmd(video_path, 0)
-        run_and_forget_silent(cmd, cwd=self.mpv_cwd)
+            logging.warning("Starting animated wallpaper in single monitor mode")
 
-        self._mpv_ipc_pipes.append(f"mpv_wallpaper_{0}")
-        time.sleep(0.5)
+            cmd = self._build_mpv_cmd(video_path, 0)
+            run_and_forget_silent(cmd, cwd=self.mpv_cwd)
 
-        add_cmd = [
-            str(self.weebp_path),
-            "add",
-            "--wait",
-            "--fullscreen",
-            "--class",
-            "mpv",
-        ]
-        run_and_forget_silent(add_cmd, cwd=self.mpv_cwd)
-        time.sleep(0.5)
+            self._mpv_ipc_pipes.append(f"mpv_wallpaper_{0}")
+            time.sleep(0.5)
+
+            add_cmd = [
+                str(self.weebp_path),
+                "add",
+                "--wait",
+                "--fullscreen",
+                "--class",
+                "mpv",
+            ]
+            run_and_forget_silent(add_cmd, cwd=self.mpv_cwd)
+            time.sleep(0.5)
 
 
-        # 🔴 WAIT UNTIL IPC EXISTS + PLAYBACK STARTED
-        if not self._wait_for_mpv_ready():
-            logging.warning("mpv did not become ready in time")
-        
+            # 🔴 WAIT UNTIL IPC EXISTS + PLAYBACK STARTED
+            if not self._wait_for_mpv_ready():
+                logging.warning("mpv did not become ready in time")
+            
 
-        return self.run_optional_tools(fallback_func=self._start_single_monitor_video_window, video_path=video_path)
+            self.run_optional_tools(fallback_func=self._start_single_monitor_video_window, video_path=video_path)
+        except Exception as e:
+            self.force_stop()
+            logging.error(f"Error while Starting animated wallpaper in single monitor mode: {e}",exc_info=True)
+            self.video_success_callback(success=False)
 
-    # TODO: Next in development
-    def _start_multi_single_video_windows(self, video_path: str):
+    # TODO: Now in development
+    def _start_multi_single_video_windows(self, video_path: Path,**kw):
+        print(f"vals: {video_path},{kw}")
 
         try:
             logging.warning("Starting animated wallpaper in multi-monitor single video mode")
-            monitors = get_monitors()
-            for idx, monitor in enumerate(monitors):
-                logging.info(f"Starting wallpaper on monitor {idx}: {monitor.x}, {monitor.y} - {monitor.width}x{monitor.height}")
-                cmd = self._build_mpv_cmd(video_path, idx)
-                run_and_forget_silent(cmd, cwd=self.mpv_cwd)
+            video_path = str(video_path)
+            cmd = self._build_mpv_cmd(video_path, 0)
+            run_and_forget_silent(cmd, cwd=self.mpv_cwd)
 
-                self._mpv_ipc_pipes.append(f"mpv_wallpaper_{idx}")
-                time.sleep(0.5)
+            self._mpv_ipc_pipes.append(f"mpv_wallpaper_{0}")
+            time.sleep(0.5)
 
-                add_cmd = [
-                    str(self.weebp_path),
-                    "add",
-                    "--wait",
-                    "--fullscreen",
-                    "--class",
-                    "mpv",
-                    f"mpv_wallpaper_{idx}"
-                ]
-                run_and_forget_silent(add_cmd, cwd=self.mpv_cwd)
-                time.sleep(0.3)
-
-            # get mpv window handles (one per monitor)
-            view_ids = list(reversed(self.get_view_id()))
-
-            monitor_info = get_monitors_info()  # contains ui_scale
-            assert len(view_ids) >= len(monitors)
-
-            for idx, (monitor, view_id) in enumerate(zip(monitor_info, view_ids)):
-
-                position:tuple = monitor.get("position", (0,0))
-                size:tuple = monitor.get("size", (1920,1080))
-                scale = monitor.get("ui_scale", 1.0)
-                primary = monitor.get("primary", False)
-                logging.info(f"Monitor {idx} - Position: {position}, Size: {size}, UI Scale: {scale}")
-                # logical → physical
-                # phys_x = 0 if primary else calculate_dimension_with_scaling(monitor_info[idx-1]["size"], monitor_info[idx-1]["ui_scale"])[0]
-                phys_x = size[0]
-                # phys_x = 0 if idx == 0 else 1920
-                # phys_y = int(monitor.y)
-                phys_w = int(size[0] * (1 - ((1 - scale) * -1)))
-                phys_h = int(size[1] * (1 - ((1 - scale) * -1)))
-
-                move_cmd = [
-                    str(self.weebp_path),
-                    "mv",
-                    "-a", f"0x{view_id}",
-                    "-x", str(phys_x),
-                    # "-y", str(phys_y),
-                    f"--width {str(size[0])}" if not primary else "",
-                    # "--height", str(phys_h),
-                ]
-
-                run_and_forget_silent(move_cmd)
-                time.sleep(0.3)
+            add_cmd = [
+                str(self.weebp_path),
+                "add",
+                "--wait",
+                "-p",
+                "--class",
+                "mpv"
+            ]
+            run_and_forget_silent(add_cmd, cwd=self.mpv_cwd)
+            time.sleep(0.3)
 
             # 🔴 WAIT UNTIL IPC EXISTS + PLAYBACK STARTED
             if not self._wait_for_mpv_ready():
                 logging.warning("mpv did not become ready in time")
             
             # ✅ NOW SAFE
-            self.run_optional_tools(fallback_func=self._start_multi_single_video_windows, video_path=video_path)
+            original_path = kw.get("original_path","")
+            self.run_optional_tools(fallback_func=self._start_multi_single_video_windows, video_path=video_path,original_path=original_path)
 
-        
+            del self.maker_thread
+
         except Exception as e:
             self.force_stop()
-            logging.error(e)
+            logging.error(e,exc_info=True)
+            self.video_success_callback(success=False)
 
 
 
@@ -470,7 +501,7 @@ class WallpaperController(QThread):
             logging.warning("mpv did not become ready in time")
 
         # ✅ NOW SAFE
-        return self.run_optional_tools(fallback_func=self._start_multi_tiled_video_windows,video_path=video_path)
+        self.run_optional_tools(fallback_func=self._start_multi_tiled_video_windows,video_path=video_path)
 
 
 
@@ -683,8 +714,14 @@ class WallpaperController(QThread):
         return len(get_monitors_info())
     
     def setup_wallpaper_mode(self):
+
+        logging.debug(f"Setting up wallpaper mode")
         monitor_count = self._detect_monitors()
-        logging.info(f"Detected {monitor_count} monitor(s)")
+        logging.info(f"{monitor_count} monitor(s) detected")
+        if self.initial_monitor_count != monitor_count:
+            logging.warning(f"Monitor count change {self.initial_monitor_count} -> {monitor_count}")
+            self.initial_monitor_count = monitor_count
+            self.stop()
 
         if monitor_count > 1:
             mode = self.load_video_settings().get("mode", PlayBackMode.TILED)
@@ -695,11 +732,12 @@ class WallpaperController(QThread):
                 self.mode = PlayBackMode.TILED
 
             logging.info(f"Setting up wallpaper mode: {self.mode}")
+        else:
+            self.mode = None
     
     def setup_fallback_settings(self):
         self.retry_fallback = self.load_video_settings().get("retry", False)
         self.max_retry_attempts= self.load_video_settings().get("retry_attempts", 10)
-
 
     # ============================================================
     # For debugging purposes only
@@ -723,7 +761,7 @@ class WallpaperController(QThread):
             return flags
         
         except (FileNotFoundError, ValueError, TypeError, tomllib.TOMLDecodeError) as e:
-            logging.error(f"Error loading video settings: {e}")
+            logging.error(f"Error loading video settings: {e}",exc_info=True)
             raise
     
     def load_video_settings(self) -> dict:
@@ -746,6 +784,6 @@ class WallpaperController(QThread):
             return settings
         
         except (FileNotFoundError, ValueError, TypeError, tomllib.TOMLDecodeError) as e:
-            logging.error(f"Error loading video settings: {e}")
+            logging.error(f"Error loading video settings: {e}",exc_info=True)
             raise
 

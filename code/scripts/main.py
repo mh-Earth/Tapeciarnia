@@ -4,6 +4,11 @@ import logging
 from PySide6.QtWidgets import QApplication,QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
+from PySide6.QtCore import qInstallMessageHandler, QtMsgType
+import logging
+import traceback
+import os
+
 
 QApplication.setHighDpiScaleFactorRoundingPolicy(
     Qt.HighDpiScaleFactorRoundingPolicy.Floor
@@ -53,6 +58,28 @@ except Exception as e:
 #         open_login()
 # else:
 #     open_login()
+
+def qt_message_handler(mode, context, message):
+    if mode == QtMsgType.QtDebugMsg:
+        logging.debug(f"[QT DEBUG] {message}")
+    elif mode == QtMsgType.QtInfoMsg:
+        logging.info(f"[QT INFO] {message}")
+    elif mode == QtMsgType.QtWarningMsg:
+        logging.warning(f"[QT WARNING] {message}")
+        # logging.error("Qt Warning Triggered\n" + "".join(traceback.format_stack()))
+    elif mode == QtMsgType.QtCriticalMsg:
+        logging.error(f"[QT CRITICAL] {message}")
+    elif mode == QtMsgType.QtFatalMsg:
+        logging.critical(f"[QT FATAL] {message}")
+
+    # Extra detailed context info
+    logging.debug(
+        f"[QT CONTEXT] file={context.file}, "
+        f"line={context.line}, "
+        f"function={context.function}"
+    )
+
+qInstallMessageHandler(qt_message_handler)
 
 
 

@@ -20,8 +20,11 @@ a = Analysis(
         ('bin/weebp/weebp.lib', 'bin/weebp'),
 
         # tools executables
+        #('bin/tools/refresh.exe', 'bin/tools'),
+
         ('bin/tools/autoPause.exe', 'bin/tools'),
-        ('bin/tools/refresh.exe', 'bin/tools'),
+        ('bin/tools/ffmpeg.exe', 'bin/tools'),
+        ('bin/LICENSES/ffmpeg.txt', 'bin/LICENSES'),
     ],
     datas=[
         # Application Data
@@ -34,10 +37,10 @@ a = Analysis(
         # Binary Support Files
         ('bin/media/icon.ico', 'bin/media'),
         ('bin/mpv/mpv.conf', 'bin/mpv'),
-        ('bin/mpv/README.txt', 'bin/mpv'),
-        ('bin/weebp/README.txt', 'bin/weebp'),
-        ('bin/tools/autoPause.au3', 'bin/tools'),
-        ('bin/tools/refresh.au3', 'bin/tools'),
+        #('bin/mpv/README.txt', 'bin/mpv'),
+        #('bin/weebp/README.txt', 'bin/weebp'),
+        #('bin/tools/autoPause.au3', 'bin/tools'),
+        #('bin/tools/refresh.au3', 'bin/tools'),
         
     ],
     hiddenimports=['utils'],

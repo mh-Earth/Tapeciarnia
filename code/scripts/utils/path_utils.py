@@ -1,7 +1,6 @@
 # utils/path_utils.py
 import platform
 import subprocess
-import json
 import sys
 import os
 import logging
@@ -97,6 +96,12 @@ def get_bin_path() -> Path:
 def get_tools_path() -> Path:
     """Get tools folder path"""
     return BASE_DIR / "bin" / "tools"
+
+def get_ffmpeg_path() -> Path:
+    return BASE_DIR / "bin" / "tools" / "ffmpeg.exe"
+
+def get_ffprobe_path() -> Path:
+    return BASE_DIR / "bin" / "tools" / "ffprobe.exe"
 
 # Folder opening functionality
 def open_folder_in_explorer(folder_path: Path):

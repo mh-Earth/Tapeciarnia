@@ -295,24 +295,24 @@ class Config:
     # URl Managment
     # -------------------------------
 
-    def set_super_wallpaper_url(self,url:str,type:str) -> None:
-        if type == RangeTypes.ALL:
+    def set_super_wallpaper_url(self,url:str,rangeType:RangeTypes) -> None:
+        if rangeType == RangeTypes.ALL:
             self.set("super_wallpaper_url_all",url)
         
-        elif type == RangeTypes.STATIC:
+        elif rangeType == RangeTypes.STATIC:
             self.set("super_wallpaper_url_wallpaper",url)
         
-        elif type == RangeTypes.ANIMATED:
+        elif rangeType == RangeTypes.ANIMATED:
             self.set("super_wallpaper_url_mp4",url)
 
-    def get_super_wallpaper_url(self,type:str) -> str:
-        if type == RangeTypes.ALL:
+    def get_super_wallpaper_url(self,rangeType:RangeTypes) -> str:
+        if rangeType == RangeTypes.ALL:
             return self.get("super_wallpaper_url_all","")
         
-        elif type == RangeTypes.STATIC:
+        elif rangeType == RangeTypes.STATIC:
             return self.get("super_wallpaper_url_wallpaper","")
         
-        elif type == RangeTypes.ANIMATED:
+        elif rangeType == RangeTypes.ANIMATED:
             return self.get("super_wallpaper_url_mp4","")
         
         return ""

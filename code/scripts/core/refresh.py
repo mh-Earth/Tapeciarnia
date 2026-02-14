@@ -171,7 +171,7 @@ def attach_window_to_desktop(hwnd) -> bool:
     try:
         _remove_window_borders(hwnd)
         _localize_to_workerw(hwnd, workerw)
-        _shell_refresh()
+        # _shell_refresh()
     except Exception:
         logging.error("Failed during post-parent configuration for hwnd=0x%X", hwnd)
         return False
