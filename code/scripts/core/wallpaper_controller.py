@@ -1,5 +1,6 @@
 # ===========================================================
 #  Wallpaper Controller
+# Description: Core logic for managing desktop wallpapers, including starting/stopping video wallpapers, handling multi-monitor setups, and interfacing with MPV and Weebp for animated wallpapers on Windows. Also includes fallback mechanisms and user prompts for error handling.
 # ===========================================================
 
 
@@ -26,6 +27,7 @@ from utils.system_utils import (
     set_static_desktop_wallpaper,
     get_windows_version,
     get_current_desktop_wallpaper,
+    gen_name_from_url
 )
 from utils.path_utils import (
     get_weebp_path,
@@ -34,7 +36,7 @@ from utils.path_utils import (
 from utils.command_handler import run_and_forget_silent
 from ui.widgets import CustomMessageBox,ButtonCollection
 from utils.singletons import get_config,get_language_controller
-from utils.path_utils import video_settings_path,playback_setting,SAVES_DIR
+from utils.path_utils import video_settings_path,playback_setting,TEMP_DIR
 from models.constants import PlayBackMode
 from core.refresh import attach_window_to_desktop
 from core.maker import WallpaperMaker
@@ -311,7 +313,7 @@ class WallpaperController(QThread):
             monitors = len(get_monitors())
             target_height = min(m.height for m in get_monitors())
             logging.info(f"Creating panoramic wallpaper for {monitors} monitor from {video_path}")
-            output_path = str(SAVES_DIR / "wallpaper.mp4")
+            output_path = str(TEMP_DIR / "wallpaper.mp4")
             def update(new_path):
                 try:
 
@@ -374,7 +376,7 @@ class WallpaperController(QThread):
                     monitors = len(get_monitors())
                     target_height = min(m.height for m in get_monitors())
                     logging.info(f"Creating panoramic wallpaper for {monitors} monitor from {video_path}")
-                    output_path = str(SAVES_DIR / "wallpaper.mp4")
+                    output_path = str(TEMP_DIR / "wallpaper.mp4")
 
                     self.maker_thread = WallpaperMaker(video_path,output_path,monitors,target_height)
                     self.maker_thread.done.connect(lambda new_path: self._start_multi_single_video_windows(new_path,original_path=video_path))
@@ -387,14 +389,32 @@ class WallpaperController(QThread):
                     self._start_multi_single_video_windows(video_path)
 
             else: # only 1 monitor detected, defaulting to single mode
-                # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                    # ===================================================================================
+                    # Testing block
+                    # Bug description: wheen there is more then 1 monitor aka in multi monitor setup when scheduler it set to
+                    # "My collection" and mode to "Mp4" the video faild to play eveytime, but when the scheduler is set to 
+                    # "wallpaper" and mode to "mp4" it works fine, this is really weird and i have no idea why this is happening
+                    # ===================================================================================
+                    # monitors = 2
+                    # target_height = min(m.height for m in get_monitors())
+                    # logging.info(f"Creating panoramic wallpaper for {monitors} monitor from {video_path}")
+                    # output_path = str(TEMP_DIR / "wallpaper.mp4")
+
+                    # self.maker_thread = WallpaperMaker(video_path,output_path,monitors,target_height)
+                    # self.maker_thread.done.connect(lambda new_path: self._start_multi_single_video_windows(new_path,original_path=video_path))
+                    # self.maker_thread.error.connect(lambda e: self.status_callback(e))
+                    # self.maker_thread.progress.connect(lambda e: self.status_callback(e))
+                    # self.maker_thread.start()
+                # ====================================================
                 self._start_single_monitor_video_window(video_path)
+                # ====================================================
 
         except Exception as e:
             logging.error("Failed to start animated wallpaper", exc_info=True)
             self.stop()
             self.video_success_callback(success=False)
+    
+
     
     def _start_single_monitor_video_window(self, video_path: Path) -> bool:
 
@@ -742,27 +762,27 @@ class WallpaperController(QThread):
     # ============================================================
     # For debugging purposes only
     # ============================================================
-    def load_video_flags(self) -> list:
-        """Load video settings from toml file."""
-        try:
-            if not os.path.exists(video_settings_path):
-                raise FileNotFoundError(f"Video settings file not found: {video_settings_path}")
+    # def load_video_flags(self) -> list:
+    #     """Load video settings from toml file."""
+    #     try:
+    #         if not os.path.exists(video_settings_path):
+    #             raise FileNotFoundError(f"Video settings file not found: {video_settings_path}")
             
-            with open(video_settings_path, "rb") as f:
-                config = tomllib.load(f)
+    #         with open(video_settings_path, "rb") as f:
+    #             config = tomllib.load(f)
             
-            if "flags" not in config:
-                raise ValueError("'flags' key not found in video settings")
+    #         if "flags" not in config:
+    #             raise ValueError("'flags' key not found in video settings")
             
-            flags = config["flags"]
-            if not isinstance(flags, list):
-                raise TypeError(f"'flags' is not a list, got {type(flags)}")
+    #         flags = config["flags"]
+    #         if not isinstance(flags, list):
+    #             raise TypeError(f"'flags' is not a list, got {type(flags)}")
             
-            return flags
+    #         return flags
         
-        except (FileNotFoundError, ValueError, TypeError, tomllib.TOMLDecodeError) as e:
-            logging.error(f"Error loading video settings: {e}",exc_info=True)
-            raise
+    #     except (FileNotFoundError, ValueError, TypeError, tomllib.TOMLDecodeError) as e:
+    #         logging.error(f"Error loading video settings: {e}",exc_info=True)
+    #         raise
     
     def load_video_settings(self) -> dict:
         """Load video settings from toml file."""

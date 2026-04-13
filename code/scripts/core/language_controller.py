@@ -1,3 +1,6 @@
+# Description: Core logic for managing application language settings, including loading translations from JSON files, handling language changes, and providing a safe method for fetching translated strings with fallback to a default language. Also includes integration with the application's configuration system and emits signals for UI updates when the language changes.
+
+
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal,qIsNull
 from PySide6.QtWidgets import QMessageBox

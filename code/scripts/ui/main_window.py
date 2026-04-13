@@ -17,6 +17,7 @@ from PySide6.QtCore import QTimer, Qt, QEvent, QSize
 from PySide6.QtWidgets import QMessageBox
 
 from .widgets import EnhancedDragDropWidget,CustomMessageBox,ButtonCollection
+from screeninfo import get_monitors
 
 current_dir = os.path.dirname(__file__)
 ui_path = os.path.join(current_dir, 'mainUI.py')
@@ -37,21 +38,45 @@ except ImportError as e:
         logging.critical("Cannot import Ui_MainWindow. Make sure mainUI.py exists in the ui folder.")
         raise ImportError("Cannot import Ui_MainWindow. Make sure mainUI.py exists in the ui folder.")
 
-# Import core modules
-from core.wallpaper_controller import WallpaperController
-from core.download_manager import VideoDownloadThread,ImageDownloadThread
-from core.scheduler import UnifiedWallpaperScheduler
+# Core modules
+from core.download_manager import ImageDownloadThread, VideoDownloadThread
 from core.login_handler import LoginWorker
+from core.maker import WallpaperMaker
+from core.scheduler import UnifiedWallpaperScheduler
 from core.shuffler import Shuffler
-# Import utilities
-from utils.path_utils import SUPER_WALLPAPER_DIR,SAVES_DIR, FAVS_DIR, get_folder_for_range, get_folder_for_source, open_folder_in_explorer
-from utils.system_utils import is_connected_to_internet, get_primary_screen_dimensions, resource_path,conver_bytes_to_tmp_path,gen_name_from_url,get_file_extension_from_url,isBundle
-from utils.validators import validate_url_or_path, get_media_type,validate_tapeciarnia_url,is_tapeciarnia_redirect_url,extract_file_id_from_url
+from core.wallpaper_controller import WallpaperController
+
+# Models and constants
+from models.constants import LoginPayload, RangeTypes, URIActions, WallpaperType
+
+# Utilities
 from utils.file_utils import cleanup_temp_marker
+from utils.path_utils import (
+    FAVS_DIR,
+    SAVES_DIR,
+    SUPER_WALLPAPER_DIR,
+    get_folder_for_range,
+    get_folder_for_source,
+    open_folder_in_explorer,
+)
 from utils.pathResolver import fast_resolve_tapeciarnia_redirect
-from utils.singletons import get_config,get_language_controller
-# Import models
-from models.constants import RangeTypes,LoginPayload,WallpaperType,URIActions
+from utils.singletons import get_config, get_language_controller
+from utils.system_utils import (
+    conver_bytes_to_tmp_path,
+    gen_name_from_url,
+    get_file_extension_from_url,
+    get_primary_screen_dimensions,
+    is_connected_to_internet,
+    isBundle,
+    resource_path,
+)
+from utils.validators import (
+    extract_file_id_from_url,
+    get_media_type,
+    is_tapeciarnia_redirect_url,
+    validate_tapeciarnia_url,
+    validate_url_or_path,
+)
 # Import UI components
 # from .dialogs import ShutdownProgressDialog
 
@@ -1408,8 +1433,7 @@ class TapeciarniaApp(QMainWindow):
     def _apply_wallpaper_from_scheduler(self,file_path:Path=None,image_data:list[str,bytes]=None):
         # This method is only called by the scheduler to change the the wallpaper
         logging.info("Wallpaper change callback called from scheduler")
-        if self.scheduler.source == str(SAVES_DIR):
-            if file_path:
+        if self.scheduler.source == str(SAVES_DIR) and file_path:
                 logging.debug("Wallpaper change callback called from scheduler with source 'My collection'")
                 self._apply_wallpaper_from_path(file_path=file_path)
                 
@@ -2000,7 +2024,7 @@ class TapeciarniaApp(QMainWindow):
         hide_action = QAction("Hide to Tray", self)
         hide_action.triggered.connect(self.hide_to_tray)
         
-        exit_action = QAction("Exit", self)
+        exit_action = QAction("Close", self)
         exit_action.triggered.connect(self._exit_app)
 
         shuffle_static_action = QAction("Shuffle Static Wallpaper", self)

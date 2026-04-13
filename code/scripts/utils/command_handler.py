@@ -1,3 +1,9 @@
+
+# ===============================================================
+# DESCRIPTION: This module provides utility functions for executing external commands in a way that mimics AutoIt's 'Run' and 'RunWait' functions on Windows. It includes support for running commands silently (without showing a console window), both in blocking and non-blocking modes. The module also includes robust error handling and logging to ensure that any issues during command execution are properly captured and reported. Additionally, it provides helper functions to check if a process is still running and to safely terminate processes started in non-blocking mode.
+# ===============================================================
+
+
 import subprocess
 import logging
 import platform

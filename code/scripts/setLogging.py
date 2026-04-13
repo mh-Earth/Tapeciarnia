@@ -1,3 +1,5 @@
+# Description: This module initializes the logging system for the Tapeciarnia application, setting up both console and file logging with appropriate formatting and log rotation. It detects whether the application is running as a PyInstaller bundle to adjust logging behavior accordingly, ensuring that logs are written to a file in bundled mode while providing colored console output during development. The class also includes error handling for potential issues during logger setup and provides informative messages about the logging configuration.
+
 import sys
 import logging
 import colorlog

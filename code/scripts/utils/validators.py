@@ -1,12 +1,14 @@
+# ==================================================================
+# Description: This module provides utility functions for validating URLs and file paths in the Tapeciarnia application. It includes functions to check if a string is an image or video URL/path, validate URLs against allowed domains, and extract specific information from URLs. The module is designed to work seamlessly in both development and bundled environments, ensuring that all validations are consistent regardless of how the application is executed. Additionally, it includes robust error handling and logging to ensure that any issues during validation are properly captured and reported.
+# ==================================================================
+
 import re
-import logging
 from pathlib import Path
 from typing import Optional
 import os
 import urllib
 import re
 from urllib.parse import urlparse, parse_qs
-import requests
 from utils.singletons import get_config
 
 

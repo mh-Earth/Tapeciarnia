@@ -1,3 +1,6 @@
+# Description: Core logic for handling user login, including making API requests in a background thread, parsing responses, and emitting signals for success or failure. Also includes a token validation thread for checking the validity of stored access tokens with the API.
+
+
 import json
 import requests
 from PySide6.QtCore import QThread, Signal

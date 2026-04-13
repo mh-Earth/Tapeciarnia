@@ -1,3 +1,5 @@
+# Description: Core logic for fetching shuffled wallpapers from the API, including internet connectivity checks, screen dimension retrieval, and robust error handling for API interactions. This module is designed to be used in a separate thread to avoid blocking the main application UI during network operations.
+
 from PySide6.QtCore import QThread, Signal
 import logging,requests,json
 from PySide6.QtWidgets import QApplication

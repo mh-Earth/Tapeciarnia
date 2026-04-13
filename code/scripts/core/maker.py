@@ -1,3 +1,7 @@
+# Description: Core logic for creating panoramic wallpapers by horizontally stacking the same video multiple times with perfect scaling, FPS normalization, and no visible quality loss.
+
+
+
 
 from PySide6.QtCore import QThread, Signal
 import logging
@@ -33,7 +37,7 @@ class WallpaperMaker(QThread):
         
 
     # prevent running more then one intance of this class 
-    def run(self) -> Path:
+    def run(self):
         """
         Horizontally stack the same video N times with
         perfect scaling, FPS normalization, and no visible quality loss.
@@ -132,7 +136,6 @@ class WallpaperMaker(QThread):
             logging.debug(f"Panoramic wallpaper ready from {input_path}")
             self.done.emit(output_path)
             self.success.emit(output_path)
-            return output_path
 
         except Exception as e:
             msg = f"Wallpaper modification failed: {e}"

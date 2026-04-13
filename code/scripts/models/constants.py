@@ -1,3 +1,5 @@
+# DEsCRIPTION: This module defines various constants and enumerations used throughout the Tapeciarnia application, including wallpaper types, range types, sources, playback modes, URI actions, and a dataclass for login payloads. These constants help maintain consistency across the application and provide a clear structure for handling different types of wallpapers, user interactions, and API requests.
+
 from enum import Enum
 from dataclasses import dataclass
 

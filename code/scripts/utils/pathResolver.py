@@ -1,3 +1,5 @@
+# Description: This module provides utility functions for resolving Tapeciarnia redirect URLs to their final image URLs. It includes two main functions: `resolve_tapeciarnia_redirect`, which follows the redirect path using a GET request, and `fast_resolve_tapeciarnia_redirect`, which uses a HEAD request for a quicker resolution. Both functions include error handling and logging to ensure that any issues during the resolution process are properly captured and reported. The module is designed to work seamlessly in both development and bundled environments, ensuring that URL resolution is efficient and reliable regardless of how the application is executed.
+
 import requests
 import logging
 from utils.singletons import get_config

@@ -1,3 +1,7 @@
+# ===============================================================
+# Description: This module provides a utility function to parse custom Tapeciarnia URI commands. It supports various URI formats, including those with actions and parameters, direct URLs, and numeric IDs. The parser validates the scheme, extracts the action and parameters, and checks if any URLs belong to allowed domains. The function returns a tuple of the action and a dictionary of parameters, or (None, None) if the URI is invalid or blocked. The module also includes logging for debugging and error tracking purposes.
+# ===============================================================
+
 import urllib.parse
 import logging
 import re

@@ -1,6 +1,8 @@
 
 # ============================================================
 #  SINGLE INSTANCE (QLockFile + QLocalServer FOR IPC)
+#  CONFIG & LANGUAGE CONTROLLER SINGLETONS
+#  Description: This module defines the SingleApplication class, which enforces a single instance of the Tapeciarnia application using a combination of QLockFile for locking and QLocalServer for inter-process communication (IPC). It also provides singleton instances for the application's configuration and language controller, ensuring that these resources are shared across the application without redundant instantiation. The module includes robust error handling and logging to ensure that any issues during initialization or IPC are properly captured and reported.
 # ============================================================
 
 

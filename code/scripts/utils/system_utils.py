@@ -1,3 +1,5 @@
+# Description: This module provides utility functions for system-related operations in the Tapeciarnia application. It includes functions to determine if the application is running as a bundled executable, resolve resource paths in a way that is compatible with PyInstaller, find executables in the system PATH, detect the current system locale, retrieve and set desktop wallpapers on both Windows and Linux (GNOME), convert image bytes to temporary file paths, gather comprehensive system information for debugging, verify wallpaper access capabilities, check internet connectivity, get primary screen dimensions, extract file names and extensions from URLs, and handle monitor DPI information on Windows. The module is designed to work seamlessly in both development and bundled environments, ensuring that all operations are performed correctly regardless of how the application is executed. Robust error handling and logging are included throughout to ensure that any issues are properly captured and reported.
+
 import sys
 import subprocess
 import locale
@@ -10,7 +12,7 @@ import socket
 import os
 import logging
 from PySide6.QtWidgets import QApplication
-from utils.path_utils import FAVS_DIR
+from utils.path_utils import FAVS_DIR,TEMP_DIR
 
 import os
 from urllib.parse import urlparse, unquote
@@ -220,7 +222,7 @@ def set_static_desktop_wallpaper(path: str) -> bool:
             # -------------------------
             # Save BMP (Windows API)
             # -------------------------
-            final_path = wallpaper_path.parent / "wallpaper_stitched.bmp"
+            final_path = TEMP_DIR / "wallpaper_stitched.bmp"
             stitched.save(final_path, "BMP")
 
             # -------------------------
@@ -445,12 +447,12 @@ def get_primary_screen_dimensions() -> tuple[int, int]:
         return 1920, 1080 # Safe fallback
 
 
-
-
-
-
-def gen_name_from_url(url:str) -> str:
-    return url.split("/")[-1]
+def gen_name_from_url(url: str) -> str:
+    """Extract filename from URL, compatible with all OS paths"""
+    # Use os.path.basename for OS-agnostic path handling
+    name = os.path.basename(urlparse(url).path) or url.split("/")[-1]
+    logging.debug(f"File name {name} extracted from {url}")
+    return name
 
 
 def find_key_by_value_nested(d, target_value, path=None):

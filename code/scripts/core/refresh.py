@@ -1,3 +1,7 @@
+# Description: Core logic for refreshing the desktop and attaching windows to it.
+
+
+
 import ctypes
 import logging
 import win32gui # type: ignore
@@ -186,6 +190,7 @@ import sys
 def main():
     if len(sys.argv) < 2:
         print("Usage: refresh.py <HWND>")
+        print("  <HWND> should be a hexadecimal window handle, e.g., 0x12345678")
         sys.exit(1)
 
     try:

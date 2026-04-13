@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Description: PyInstaller spec file for building the Tapeciarnia application. This file defines how the application should be packaged, including which scripts to include, which data files and binaries to bundle, and how to configure the executable. It also includes a custom message handler to route Qt messages to the logging system for better debugging and error tracking. The spec file is designed to work in both development and packaged environments, with dynamic imports based on the execution context.
 
 block_cipher = None
 

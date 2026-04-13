@@ -1,3 +1,6 @@
+# Description: This module provides utility functions for file operations in the Tapeciarnia application, specifically focused on managing temporary download markers. It includes a function to clean up temporary download marker files, with robust error handling and logging to ensure that any issues during cleanup are properly captured and reported. The function checks for the existence of the temporary marker file, logs its size if it exists, and attempts to remove it while handling potential permission
+
+
 import logging
 
 from .path_utils import TMP_DOWNLOAD_FILE

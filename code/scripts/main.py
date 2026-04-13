@@ -1,3 +1,6 @@
+# Description: Main entry point for the Tapeciarnia application. This script initializes the application, sets up logging, handles single instance enforcement, processes command-line arguments and URI commands, and starts the Qt event loop. It also includes a custom message handler to route Qt messages to the logging system for better debugging and error tracking. The script is designed to work in both development and packaged environments, with dynamic imports based on the execution context.
+
+
 import sys
 import logging
 
@@ -6,8 +9,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import qInstallMessageHandler, QtMsgType
 import logging
-import traceback
-import os
 
 
 QApplication.setHighDpiScaleFactorRoundingPolicy(

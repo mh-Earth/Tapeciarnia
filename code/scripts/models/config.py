@@ -1,3 +1,6 @@
+# Description: Configuration management for the Tapeciarnia application, using QSettings for persistent storage. This module provides a structured interface for getting and setting various configuration options, including allowed domains, valid file extensions, scheduler settings, language preferences, session management, and URL templates for fetching wallpapers. It also includes helper methods to ensure default values are set when necessary and to manage complex configuration structures in a clean way.
+
+
 from PySide6.QtCore import QSettings
 
 from utils.system_utils import current_system_locale,get_primary_screen_dimensions

@@ -1,3 +1,5 @@
+# Description: Core logic for scheduling wallpaper changes, supporting both offline (random local files) and online (API + prefetch queue) modes, with a unified interface for the main application to interact with. Also includes an internal worker thread for handling online image fetching and queuing.
+
 import time
 import random
 import logging

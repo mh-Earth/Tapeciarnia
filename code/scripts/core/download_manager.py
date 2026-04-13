@@ -1,3 +1,5 @@
+# Description: Core logic for managing downloads of wallpapers and videos, including progress tracking, error handling, and cancellation support. This module defines two QThread subclasses for handling image and video downloads in the background, emitting signals to update the UI with progress and completion status. It also includes robust error handling and cleanup of partial downloads in case of failures or cancellations.
+
 import time
 import os
 from pathlib import Path

@@ -1,4 +1,5 @@
-# utils/path_utils.py
+# Description: This module provides utility functions for managing file paths and directories in the Tapeciarnia application. It includes functions to determine the application's root directory, locate specific executables and resources, and handle folder opening in the system's file explorer. The module also defines constants for various important directories used by the application, such as collections, favorites, saves, super wallpapers, and temporary files. Additionally, it includes helper functions to get the appropriate folder paths based on source types and range types, as well as a function to get the absolute path of icon files within the bundled assets. The module is designed to work seamlessly in both development and bundled environments, ensuring that all paths are correctly resolved regardless of how the application is executed.
+
 import platform
 import subprocess
 import sys
@@ -30,8 +31,8 @@ def get_collections_folder() -> Path:
 COLLECTION_DIR = get_collections_folder()
 FAVS_DIR = COLLECTION_DIR / "Favorites"
 SAVES_DIR = COLLECTION_DIR / "Saves"
-SUPER_WALLPAPER_DIR = SAVES_DIR / "SuperWallpapers"
-
+SUPER_WALLPAPER_DIR = COLLECTION_DIR / "SuperWallpapers"
+TEMP_DIR = COLLECTION_DIR / "Temps"
 
 def get_app_root():
     """
@@ -50,7 +51,7 @@ ROOT_DIR = BASE_DIR.parent.parent
 
 
 # Ensure folders exist
-for d in (COLLECTION_DIR,SAVES_DIR,FAVS_DIR,SUPER_WALLPAPER_DIR):
+for d in (COLLECTION_DIR,SAVES_DIR,FAVS_DIR,SUPER_WALLPAPER_DIR,TEMP_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 TMP_DOWNLOAD_FILE = COLLECTION_DIR / "download_path.tmp"
